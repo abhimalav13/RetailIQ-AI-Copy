@@ -35,6 +35,26 @@ st.caption("Smart Retail Analytics & Business Decision Support")
 st.sidebar.title("RetailIQ AI")
 st.sidebar.caption("Business Intelligence Platform")
 
+# CURRENCY CONFIGURATION
+
+currency_options = {
+    "INR": {"name": "Indian Rupee (₹)", "symbol": "₹"},
+    "USD": {"name": "US Dollar ($)", "symbol": "$"},
+    "GBP": {"name": "British Pound (£)", "symbol": "£"},
+    "EUR": {"name": "Euro (€)", "symbol": "€"},
+    "AED": {"name": "UAE Dirham (د.إ)", "symbol": "د.إ"},
+    "CAD": {"name": "Canadian Dollar (C$)", "symbol": "C$"},
+    "AUD": {"name": "Australian Dollar (A$)", "symbol": "A$"}
+}
+
+selected_currency = st.sidebar.selectbox(
+    "Select Dataset Currency",
+    options=list(currency_options.keys()),
+    format_func=lambda x: currency_options[x]["name"]
+)
+
+currency_symbol = currency_options[selected_currency]["symbol"]
+
 uploaded_file = st.sidebar.file_uploader(
     "Upload your retail dataset",
     type=["csv", "xlsx"]
