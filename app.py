@@ -747,8 +747,9 @@ if page == "Business Overview":
         use_container_width=True
     )
 
+
     # ==========================================
-    # ORDER VALUE HISTOGRAM
+    # ORDER VALUE DISTRIBUTION
     # ==========================================
 
     st.subheader("Order Value Distribution")
@@ -759,40 +760,107 @@ if page == "Business Overview":
         .reset_index(name="OrderValue")
     )
 
-    fig_hist = px.histogram(
-        order_values,
-        x="OrderValue",
-        nbins=30,
-        log_x=True,
-        template="plotly_white",
-        color_discrete_sequence=[teal]
-    )
+    # Keep only positive order values
+    positive_orders = order_values[
+        order_values["OrderValue"] > 0
+    ]["OrderValue"]
 
-    fig_hist.update_traces(
-        marker_line_color=navy,
-        marker_line_width=0.5,
-        hovertemplate=(
-            f"Order Value: {currency_symbol}%{{x:,.2f}}"
-            "<br>Number of Orders: %{y}"
-            "<extra></extra>"
+    if not positive_orders.empty:
+
+        # Summary metrics
+        avg_order = positive_orders.mean()
+        median_order = positive_orders.median()
+        max_order = positive_orders.max()
+
+        m1, m2, m3 = st.columns(3)
+
+        m1.metric(
+            "Average Order Value",
+            f"{currency_symbol}{avg_order:,.2f}"
         )
-    )
 
-    fig_hist.update_layout(
-        title="Distribution of Order Values",
-        title_font_color=navy,
-        xaxis_title=f"Order Value ({selected_currency})",
-        yaxis_title="Number of Orders",
-        xaxis_tickprefix=currency_symbol,
-        font=dict(color=navy),
-        plot_bgcolor="white",
-        paper_bgcolor="white"
-    )
+        m2.metric(
+            "Median Order Value",
+            f"{currency_symbol}{median_order:,.2f}"
+        )
 
-    st.plotly_chart(
-        fig_hist,
-        use_container_width=True
-    )
+        m3.metric(
+            "Highest Order Value",
+            f"{currency_symbol}{max_order:,.2f}"
+        )
+
+        # Create logarithmic bins manually
+        min_value = positive_orders.min()
+        max_value = positive_orders.max()
+
+        if min_value == max_value:
+            bin_edges = np.linspace(
+                min_value * 0.5,
+                max_value * 1.5,
+                11
+            )
+        else:
+            bin_edges = np.geomspace(
+                min_value,
+                max_value * 1.001,
+                21
+            )
+
+        counts, edges = np.histogram(
+            positive_orders,
+            bins=bin_edges
+        )
+
+        histogram_df = pd.DataFrame({
+            "Order Range": [
+                f"{currency_symbol}{edges[i]:,.0f} - "
+                f"{currency_symbol}{edges[i+1]:,.0f}"
+                for i in range(len(counts))
+            ],
+            "Number of Orders": counts
+        })
+
+        histogram_df = histogram_df[
+            histogram_df["Number of Orders"] > 0
+        ]
+
+        fig_hist = px.bar(
+            histogram_df,
+            x="Order Range",
+            y="Number of Orders",
+            title="Order Value Distribution",
+            color_discrete_sequence=["#14B8A6"],
+            template="plotly_white"
+        )
+
+        fig_hist.update_traces(
+            marker_line_color="#14213D",
+            marker_line_width=0.5,
+            hovertemplate=(
+                "Order Range: %{x}<br>"
+                "Number of Orders: %{y:,}"
+                "<extra></extra>"
+            )
+        )
+
+        fig_hist.update_layout(
+            title_font_color="#14213D",
+            xaxis_title="Order Value Ranges",
+            yaxis_title="Number of Orders",
+            xaxis_tickangle=-35,
+            font=dict(color="#14213D"),
+            plot_bgcolor="white",
+            paper_bgcolor="white"
+        )
+
+        st.plotly_chart(
+            fig_hist,
+            use_container_width=True
+        )
+
+    else:
+        st.warning("No positive order values available.")
+
 
 
     # ==========================================
