@@ -405,19 +405,19 @@ elif page == "Product Intelligence":
         template="plotly_white"
     )
 
-            fig.update_layout(
-            yaxis={"categoryorder": "total ascending"},
-            xaxis_title=f"Revenue ({selected_currency})",
-            xaxis_tickprefix=currency_symbol
-        )
-        
-        fig.update_traces(
-            hovertemplate=(
-                f"Product: %{{y}}<br>"
-                f"Revenue: {currency_symbol}%{{x:,.2f}}"
-                "<extra></extra>"
-            )
-        )
+    fig.update_layout(
+    yaxis={"categoryorder": "total ascending"},
+    xaxis_title=f"Revenue ({selected_currency})",
+    xaxis_tickprefix=currency_symbol
+)
+
+fig.update_traces(
+    hovertemplate=(
+        f"Product: %{{y}}<br>"
+        f"Revenue: {currency_symbol}%{{x:,.2f}}"
+        "<extra></extra>"
+    )
+)
 
     st.plotly_chart(fig, use_container_width=True)
 
