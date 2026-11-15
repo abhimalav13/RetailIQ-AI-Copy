@@ -15,6 +15,96 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==========================================
+# RETAILIQ AI - CUSTOM UI THEME
+# ==========================================
+
+st.markdown("""
+<style>
+
+/* Main application background */
+.stApp {
+    background-color: #F5F7FA;
+    color: #14213D;
+}
+
+/* Main content spacing */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #14213D;
+}
+
+[data-testid="stSidebar"] * {
+    color: #FFFFFF;
+}
+
+/* Main headings */
+h1, h2, h3 {
+    color: #14213D !important;
+    font-weight: 700 !important;
+}
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background-color: #FFFFFF;
+    border: 1px solid #E5EAF1;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(20, 33, 61, 0.06);
+}
+
+/* Metric labels */
+[data-testid="stMetricLabel"] {
+    color: #64748B !important;
+}
+
+/* Metric values */
+[data-testid="stMetricValue"] {
+    color: #00A6A6 !important;
+    font-weight: 700;
+}
+
+/* Buttons */
+.stButton > button {
+    background-color: #00A6A6;
+    color: white;
+    border: none;
+    border-radius: 9px;
+    padding: 0.55rem 1.2rem;
+    font-weight: 600;
+}
+
+.stButton > button:hover {
+    background-color: #008B8B;
+    color: white;
+    border: none;
+}
+
+/* Dataframes */
+[data-testid="stDataFrame"] {
+    border: 1px solid #E5EAF1;
+    border-radius: 10px;
+}
+
+/* Input fields */
+.stTextInput input,
+.stSelectbox div[data-baseweb="select"] {
+    border-radius: 8px;
+}
+
+/* Info and success messages */
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <style>
 .main {
