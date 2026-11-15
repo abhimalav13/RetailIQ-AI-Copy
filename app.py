@@ -253,6 +253,11 @@ except Exception as e:
     st.stop()
 
 
+
+# ==========================================
+# SMART DATASET COLUMN MAPPING
+# ==========================================
+
 required_columns = [
     "InvoiceNo",
     "StockCode",
@@ -263,16 +268,142 @@ required_columns = [
     "Country"
 ]
 
+# Normalize column names for comparison
+def normalize_column(col):
+    return "".join(
+        ch.lower() for ch in str(col) if ch.isalnum()
+    )
+
+column_lookup = {
+    normalize_column(col): col
+    for col in raw_df.columns
+}
+
+# Alternative names for common retail columns
+column_aliases = {
+    "InvoiceNo": [
+        "invoiceno", "invoice", "invoiceid",
+        "orderid", "ordernumber", "transactionid"
+    ],
+    "StockCode": [
+        "stockcode", "productid", "productcode",
+        "sku", "itemcode"
+    ],
+    "Description": [
+        "description", "productname",
+        "itemname", "product"
+    ],
+    "Quantity": [
+        "quantity", "qty", "unitssold",
+        "numberofitems"
+    ],
+    "InvoiceDate": [
+        "invoicedate", "orderdate",
+        "transactiondate", "date"
+    ],
+    "UnitPrice": [
+        "unitprice", "sellingprice",
+        "priceperunit", "price"
+    ],
+    "Country": [
+        "country", "customercountry",
+        "market", "region"
+    ]
+}
+
+rename_map = {}
+used_columns = set()
+unmapped_columns = []
+
+# Automatically detect matching columns
+for target in required_columns:
+
+    matched_column = None
+
+    for alias in column_aliases[target]:
+
+        normalized_alias = normalize_column(alias)
+
+        if normalized_alias in column_lookup:
+
+            candidate = column_lookup[normalized_alias]
+
+            if candidate not in used_columns:
+                matched_column = candidate
+                break
+
+    if matched_column is not None:
+
+        rename_map[matched_column] = target
+        used_columns.add(matched_column)
+
+    else:
+        unmapped_columns.append(target)
+
+
+# Ask the user to map columns that were not detected
+if unmapped_columns:
+
+    st.subheader("Map Your Dataset Columns")
+
+    st.info(
+        "Some columns could not be detected automatically. "
+        "Please select the matching columns below."
+    )
+
+    for target in unmapped_columns:
+
+        available_columns = [
+            col for col in raw_df.columns
+            if col not in used_columns
+        ]
+
+        selected_column = st.selectbox(
+            f"Select column for {target}",
+            ["-- Select a column --"] + available_columns,
+            key=f"mapping_{target}"
+        )
+
+        if selected_column != "-- Select a column --":
+
+            rename_map[selected_column] = target
+            used_columns.add(selected_column)
+
+
+# Stop if required columns are still missing
+mapped_targets = list(rename_map.values())
+
 missing_columns = [
     col for col in required_columns
-    if col not in raw_df.columns
+    if col not in mapped_targets
 ]
 
 if missing_columns:
-    st.error(
-        f"Missing required columns: {missing_columns}"
+
+    st.warning(
+        f"Please map these required fields: {missing_columns}"
     )
+
     st.stop()
+
+
+# Rename uploaded columns to standard RetailIQ AI names
+raw_df = raw_df.rename(columns=rename_map)
+
+st.success("Dataset columns successfully mapped!")
+
+with st.expander("View detected column mapping"):
+
+    mapping_df = pd.DataFrame(
+        list(rename_map.items()),
+        columns=["Original Column", "RetailIQ AI Column"]
+    )
+
+    st.dataframe(
+        mapping_df,
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ==========================================
