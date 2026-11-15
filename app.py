@@ -441,11 +441,17 @@ elif page == "Product Intelligence":
 
     st.subheader("Complete Product Performance")
 
-    st.dataframe(
-        products,
-        use_container_width=True,
-        hide_index=True
-    )
+    display_products = products.copy()
+
+display_products["Revenue"] = display_products["Revenue"].apply(
+    lambda x: f"{currency_symbol}{x:,.2f}"
+)
+
+st.dataframe(
+    display_products,
+    use_container_width=True,
+    hide_index=True
+)
 
 # ==========================================
 # PAGE 4: MARKET ANALYSIS
