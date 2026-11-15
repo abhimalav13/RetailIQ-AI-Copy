@@ -793,56 +793,113 @@ if page == "Business Overview":
         use_container_width=True
     )
 
+
     # ==========================================
     # GLOBAL SALES MAP
     # ==========================================
 
     st.subheader("Global Sales Map")
 
-    fig_map = px.choropleth(
-        countries,
-        locations="Country",
-        locationmode="country names",
-        color="Revenue",
-        hover_name="Country",
-        color_continuous_scale=[
-            light_blue,
-            teal,
-            navy
-        ],
-        template="plotly_white"
+    # Convert country names into standard ISO-3 codes
+    country_iso3 = {
+        "United Kingdom": "GBR",
+        "Netherlands": "NLD",
+        "EIRE": "IRL",
+        "Germany": "DEU",
+        "France": "FRA",
+        "Australia": "AUS",
+        "Spain": "ESP",
+        "Switzerland": "CHE",
+        "Belgium": "BEL",
+        "Sweden": "SWE",
+        "Italy": "ITA",
+        "Portugal": "PRT",
+        "Norway": "NOR",
+        "Finland": "FIN",
+        "Denmark": "DNK",
+        "Austria": "AUT",
+        "Cyprus": "CYP",
+        "Greece": "GRC",
+        "Poland": "POL",
+        "Japan": "JPN",
+        "Singapore": "SGP",
+        "Hong Kong": "HKG",
+        "USA": "USA",
+        "Canada": "CAN",
+        "Brazil": "BRA",
+        "Israel": "ISR",
+        "Iceland": "ISL",
+        "Bahrain": "BHR",
+        "Lebanon": "LBN",
+        "Lithuania": "LTU",
+        "Malta": "MLT",
+        "Saudi Arabia": "SAU",
+        "United Arab Emirates": "ARE",
+        "Czech Republic": "CZE",
+        "RSA": "ZAF"
+    }
+
+    map_countries = countries.copy()
+
+    map_countries["ISO3"] = (
+        map_countries["Country"].map(country_iso3)
     )
 
-    fig_map.update_traces(
-        hovertemplate=(
-            "Country: %{location}<br>"
-            f"Revenue: {currency_symbol}%{{z:,.2f}}"
-            "<extra></extra>"
+    map_countries = map_countries.dropna(
+        subset=["ISO3"]
+    )
+
+    if not map_countries.empty:
+
+        fig_map = px.choropleth(
+            map_countries,
+            locations="ISO3",
+            locationmode="ISO-3",
+            color="Revenue",
+            hover_name="Country",
+            color_continuous_scale=[
+                "#DCE6F1",
+                "#14B8A6",
+                "#14213D"
+            ],
+            template="plotly_white"
         )
-    )
 
-    fig_map.update_layout(
-        title="Worldwide Revenue Distribution",
-        title_font_color=navy,
-        coloraxis_colorbar=dict(
-            title=f"Revenue ({selected_currency})"
-        ),
-        geo=dict(
-            showframe=False,
+        fig_map.update_geos(
+            fitbounds="locations",
+            visible=True,
+            showcountries=True,
             showcoastlines=True,
-            coastlinecolor="#94A3B8",
             showland=True,
-            landcolor="#F1F5F9",
+            landcolor="#E2E8F0",
             bgcolor="white"
-        ),
-        font=dict(color=navy),
-        paper_bgcolor="white"
-    )
+        )
 
-    st.plotly_chart(
-        fig_map,
-        use_container_width=True
-    )
+        fig_map.update_layout(
+            title="Worldwide Revenue Distribution",
+            coloraxis_colorbar=dict(
+                title=f"Revenue ({selected_currency})"
+            ),
+            paper_bgcolor="white",
+            font=dict(color="#14213D")
+        )
+
+        fig_map.update_traces(
+            hovertemplate=(
+                "Country: %{hovertext}<br>"
+                f"Revenue: {currency_symbol}%{{z:,.2f}}"
+                "<extra></extra>"
+            )
+        )
+
+        st.plotly_chart(
+            fig_map,
+            use_container_width=True
+        )
+
+    else:
+        st.warning("No recognized country locations found.")
+
 
     # ==========================================
     # TOP PERFORMING PRODUCTS
