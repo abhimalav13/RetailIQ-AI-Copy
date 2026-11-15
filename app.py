@@ -39,9 +39,54 @@ st.markdown("""
     background-color: #14213D;
 }
 
-[data-testid="stSidebar"] * {
+
+/* Sidebar background */
+[data-testid="stSidebar"] {
+    background-color: #14213D;
+}
+
+/* Keep sidebar headings and labels white */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] .stMarkdown {
     color: #FFFFFF;
 }
+
+/* Currency selector - dark readable text */
+[data-testid="stSidebar"] [data-baseweb="select"] * {
+    color: #14213D !important;
+}
+
+/* File uploader - readable text */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] * {
+    color: #14213D !important;
+}
+
+/* File uploader label */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+    background-color: #FFFFFF;
+    border-radius: 12px;
+}
+
+/* Sidebar information box */
+[data-testid="stSidebar"] [data-testid="stAlert"] {
+    background-color: #E8F1FF;
+    border-radius: 12px;
+}
+
+[data-testid="stSidebar"] [data-testid="stAlert"] * {
+    color: #14213D !important;
+}
+
+/* Navigation labels */
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    color: #FFFFFF !important;
+}
+
 
 /* Main headings */
 h1, h2, h3 {
