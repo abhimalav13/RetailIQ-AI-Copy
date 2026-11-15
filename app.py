@@ -195,11 +195,15 @@ uploaded_file = st.sidebar.file_uploader(
     type=["csv", "xlsx"]
 )
 
+
 st.sidebar.info(
-    "Upload a dataset containing InvoiceNo, "
-    "StockCode, Description, Quantity, "
-    "InvoiceDate, UnitPrice and Country."
+    "Upload your retail dataset in CSV or Excel format. "
+    "RetailIQ AI automatically detects common column names "
+    "and lets you map columns manually when needed. "
+    "Required data: Order ID, Product, Quantity, Date, "
+    "Unit Price and Country."
 )
+
 
 # ==========================================
 # DATA LOADING
