@@ -164,7 +164,12 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 RetailIQ AI")
+
+st.image(
+    "ff744770-ea67-497d-916e-55c45b633585.png",
+    width=520
+)
+
 st.caption("Smart Retail Analytics & Business Decision Support")
 
 st.sidebar.title("RetailIQ AI")
