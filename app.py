@@ -526,11 +526,15 @@ elif page == "Sales Forecast":
                 fig, use_container_width=True
             )
 
+           
             st.dataframe(
-                forecast_df.round(2),
+                forecast_df.style.format({
+                    "Predicted Revenue": f"{currency_symbol}{{:,.2f}}"
+                }),
                 use_container_width=True,
                 hide_index=True
             )
+
 
         except Exception as e:
             st.error(f"Forecasting error: {e}")
