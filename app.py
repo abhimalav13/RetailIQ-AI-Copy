@@ -298,7 +298,7 @@ if page == "Business Overview":
 
     c1.metric(
         "Total Revenue",
-        f"£{total_revenue:,.2f}"
+       f"{currency_symbol}{total_revenue:,.2f}"
     )
 
     c2.metric(
@@ -308,7 +308,7 @@ if page == "Business Overview":
 
     c3.metric(
         "Average Order Value",
-        f"£{aov:,.2f}"
+        f"{currency_symbol}{aov:,.2f}"
     )
 
     c4, c5, c6 = st.columns(3)
