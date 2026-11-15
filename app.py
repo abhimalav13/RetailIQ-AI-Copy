@@ -419,7 +419,7 @@ fig.update_traces(
     )
 )
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Top 10 Products by Quantity")
 
