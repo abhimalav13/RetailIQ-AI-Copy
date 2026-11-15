@@ -353,6 +353,19 @@ elif page == "Sales Analytics":
         template="plotly_white"
     )
 
+        fig.update_layout(
+            yaxis_title=f"Revenue ({selected_currency})",
+            yaxis_tickprefix=currency_symbol
+        )
+        
+        fig.update_traces(
+            hovertemplate=(
+                f"Month: %{{x}}<br>"
+                f"Revenue: {currency_symbol}%{{y:,.2f}}"
+                "<extra></extra>"
+            )
+        )
+
     st.plotly_chart(fig, use_container_width=True)
 
     fig2 = px.line(
