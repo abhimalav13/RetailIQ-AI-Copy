@@ -569,11 +569,15 @@ if page == "Business Overview":
 
     st.header("Business Performance Overview")
 
+    # ==========================================
+    # KPI CARDS
+    # ==========================================
+
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
         "Total Revenue",
-       f"{currency_symbol}{total_revenue:,.2f}"
+        f"{currency_symbol}{total_revenue:,.2f}"
     )
 
     c2.metric(
@@ -592,9 +596,27 @@ if page == "Business Overview":
     c5.metric("Unique Products", f"{total_products:,}")
     c6.metric("Unique Customers", f"{total_customers:,}")
 
+    # ==========================================
+    # CHART THEME
+    # ==========================================
+
+    navy = "#14213D"
+    teal = "#14B8A6"
+    light_blue = "#DCE6F1"
+
+    chart_colors = [
+        navy, teal, "#38BDF8", "#64748B",
+        "#A5B4FC", "#2DD4BF", "#94A3B8",
+        "#0F766E"
+    ]
+
+    # ==========================================
+    # MONTHLY REVENUE TREND
+    # ==========================================
+
     st.subheader("Monthly Revenue Trend")
 
-    fig = px.line(
+    fig_monthly = px.line(
         monthly,
         x="Month",
         y="Revenue",
@@ -602,12 +624,242 @@ if page == "Business Overview":
         template="plotly_white"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    fig_monthly.update_traces(
+        line=dict(color=teal, width=3),
+        marker=dict(size=7),
+        hovertemplate=(
+            "Month: %{x|%B %Y}<br>"
+            f"Revenue: {currency_symbol}%{{y:,.2f}}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_monthly.update_layout(
+        title="Monthly Revenue Performance",
+        title_font_color=navy,
+        yaxis_title=f"Revenue ({selected_currency})",
+        xaxis_title="Month",
+        yaxis_tickprefix=currency_symbol,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig_monthly,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # COUNTRY REVENUE DONUT
+    # ==========================================
+
+    st.subheader("Revenue Distribution by Country")
+
+    country_chart = countries.head(8).copy()
+
+    if len(countries) > 8:
+
+        other_revenue = countries.iloc[8:]["Revenue"].sum()
+
+        country_chart = pd.concat(
+            [
+                country_chart,
+                pd.DataFrame({
+                    "Country": ["Other Countries"],
+                    "Revenue": [other_revenue]
+                })
+            ],
+            ignore_index=True
+        )
+
+    fig_donut = px.pie(
+        country_chart,
+        names="Country",
+        values="Revenue",
+        hole=0.58,
+        color_discrete_sequence=chart_colors
+    )
+
+    fig_donut.update_traces(
+        textposition="inside",
+        textinfo="percent",
+        hovertemplate=(
+            "Country: %{label}<br>"
+            f"Revenue: {currency_symbol}%{{value:,.2f}}"
+            "<br>Share: %{percent}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_donut.update_layout(
+        title="Country-wise Revenue Share",
+        title_font_color=navy,
+        font=dict(color=navy),
+        legend_title="Markets",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig_donut,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # DAILY SALES TREND
+    # ==========================================
+
+    st.subheader("Daily Sales Performance")
+
+    daily_chart = daily.rename_axis(
+        "Date"
+    ).reset_index(name="Revenue")
+
+    fig_daily = px.line(
+        daily_chart,
+        x="Date",
+        y="Revenue",
+        template="plotly_white"
+    )
+
+    fig_daily.update_traces(
+        line=dict(color=teal, width=2),
+        hovertemplate=(
+            "Date: %{x|%d %b %Y}<br>"
+            f"Revenue: {currency_symbol}%{{y:,.2f}}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_daily.update_layout(
+        title="Daily Revenue Trend",
+        title_font_color=navy,
+        xaxis_title="Date",
+        yaxis_title=f"Revenue ({selected_currency})",
+        yaxis_tickprefix=currency_symbol,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig_daily,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # ORDER VALUE HISTOGRAM
+    # ==========================================
+
+    st.subheader("Order Value Distribution")
+
+    order_values = (
+        df.groupby("InvoiceNo")["Revenue"]
+        .sum()
+        .reset_index(name="OrderValue")
+    )
+
+    fig_hist = px.histogram(
+        order_values,
+        x="OrderValue",
+        nbins=30,
+        template="plotly_white",
+        color_discrete_sequence=[teal]
+    )
+
+    fig_hist.update_traces(
+        marker_line_color=navy,
+        marker_line_width=0.5,
+        hovertemplate=(
+            f"Order Value: {currency_symbol}%{{x:,.2f}}"
+            "<br>Number of Orders: %{y}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_hist.update_layout(
+        title="Distribution of Order Values",
+        title_font_color=navy,
+        xaxis_title=f"Order Value ({selected_currency})",
+        yaxis_title="Number of Orders",
+        xaxis_tickprefix=currency_symbol,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig_hist,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # GLOBAL SALES MAP
+    # ==========================================
+
+    st.subheader("Global Sales Map")
+
+    fig_map = px.choropleth(
+        countries,
+        locations="Country",
+        locationmode="country names",
+        color="Revenue",
+        hover_name="Country",
+        color_continuous_scale=[
+            light_blue,
+            teal,
+            navy
+        ],
+        template="plotly_white"
+    )
+
+    fig_map.update_traces(
+        hovertemplate=(
+            "Country: %{location}<br>"
+            f"Revenue: {currency_symbol}%{{z:,.2f}}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_map.update_layout(
+        title="Worldwide Revenue Distribution",
+        title_font_color=navy,
+        coloraxis_colorbar=dict(
+            title=f"Revenue ({selected_currency})"
+        ),
+        geo=dict(
+            showframe=False,
+            showcoastlines=True,
+            coastlinecolor="#94A3B8",
+            showland=True,
+            landcolor="#F1F5F9",
+            bgcolor="white"
+        ),
+        font=dict(color=navy),
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig_map,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # TOP PERFORMING PRODUCTS
+    # ==========================================
 
     st.subheader("Top Performing Products")
 
+    display_products = products.head(10).copy()
+
+    display_products["Revenue"] = (
+        display_products["Revenue"].apply(
+            lambda x: f"{currency_symbol}{x:,.2f}"
+        )
+    )
+
     st.dataframe(
-        products.head(10),
+        display_products,
         use_container_width=True,
         hide_index=True
     )
