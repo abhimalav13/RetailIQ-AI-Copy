@@ -441,7 +441,7 @@ elif page == "Product Intelligence":
 
     st.subheader("Complete Product Performance")
 
-        display_products = products.copy()
+    display_products = products.copy()
 
     display_products["Revenue"] = display_products["Revenue"].apply(
         lambda x: f"{currency_symbol}{x:,.2f}"
