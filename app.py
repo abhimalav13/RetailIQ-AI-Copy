@@ -406,23 +406,23 @@ elif page == "Product Intelligence":
     )
 
 
-        fig.update_layout(
-            yaxis={"categoryorder": "total ascending"},
-            xaxis_title=f"Revenue ({selected_currency})",
-            xaxis_tickprefix=currency_symbol
+    fig.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        xaxis_title=f"Revenue ({selected_currency})",
+        xaxis_tickprefix=currency_symbol
+    )
+
+    fig.update_traces(
+        hovertemplate=(
+            f"Product: %{{y}}<br>"
+            f"Revenue: {currency_symbol}%{{x:,.2f}}"
+            "<extra></extra>"
         )
+    )
 
-        fig.update_traces(
-            hovertemplate=(
-                f"Product: %{{y}}<br>"
-                f"Revenue: {currency_symbol}%{{x:,.2f}}"
-                "<extra></extra>"
-            )
-        )
+    st.plotly_chart(fig, use_container_width=True)
 
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("Top 10 Products by Quantity")
+    st.subheader("Top 10 Products by Quantity")
 
 
     quantity_top = products.nlargest(
