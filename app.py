@@ -405,12 +405,13 @@ elif page == "Product Intelligence":
         template="plotly_white"
     )
 
+
         fig.update_layout(
-        yaxis={"categoryorder": "total ascending"},
-        xaxis_title=f"Revenue ({selected_currency})",
-        xaxis_tickprefix=currency_symbol
-    )
-    
+            yaxis={"categoryorder": "total ascending"},
+            xaxis_title=f"Revenue ({selected_currency})",
+            xaxis_tickprefix=currency_symbol
+        )
+
         fig.update_traces(
             hovertemplate=(
                 f"Product: %{{y}}<br>"
@@ -419,9 +420,10 @@ elif page == "Product Intelligence":
             )
         )
 
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.subheader("Top 10 Products by Quantity")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Top 10 Products by Quantity")
+
 
     quantity_top = products.nlargest(
         10, "Units"
