@@ -462,40 +462,40 @@ elif page == "Market Analysis":
     st.header("Country-wise Market Analysis")
 
     
-        fig = px.bar(
-            countries.head(10),
-            x="Country",
-            y="Revenue",
-            title="Top 10 Countries by Revenue",
-            template="plotly_white"
+    fig = px.bar(
+        countries.head(10),
+        x="Country",
+        y="Revenue",
+        title="Top 10 Countries by Revenue",
+        template="plotly_white"
+    )
+
+    fig.update_layout(
+        yaxis_title=f"Revenue ({selected_currency})",
+        yaxis_tickprefix=currency_symbol
+    )
+
+    fig.update_traces(
+        hovertemplate=(
+            "Country: %{x}<br>"
+            f"Revenue: {currency_symbol}%{{y:,.2f}}"
+            "<extra></extra>"
         )
+    )
 
-        fig.update_layout(
-            yaxis_title=f"Revenue ({selected_currency})",
-            yaxis_tickprefix=currency_symbol
-        )
+    st.plotly_chart(fig, use_container_width=True)
 
-        fig.update_traces(
-            hovertemplate=(
-                "Country: %{x}<br>"
-                f"Revenue: {currency_symbol}%{{y:,.2f}}"
-                "<extra></extra>"
-            )
-        )
+    display_countries = countries.copy()
 
-        st.plotly_chart(fig, use_container_width=True)
+    display_countries["Revenue"] = display_countries["Revenue"].apply(
+        lambda x: f"{currency_symbol}{x:,.2f}"
+    )
 
-        display_countries = countries.copy()
-
-        display_countries["Revenue"] = display_countries["Revenue"].apply(
-            lambda x: f"{currency_symbol}{x:,.2f}"
-        )
-
-        st.dataframe(
-            display_countries,
-            use_container_width=True,
-            hide_index=True
-        )
+    st.dataframe(
+        display_countries,
+        use_container_width=True,
+        hide_index=True
+    )
 
 
     if total_revenue:
