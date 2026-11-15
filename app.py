@@ -1201,30 +1201,47 @@ elif page == "Sales Analytics":
 # PAGE 3: PRODUCT INTELLIGENCE
 # ==========================================
 
+
 elif page == "Product Intelligence":
 
     st.header("Product Intelligence")
 
+    navy = "#14213D"
+    teal = "#14B8A6"
+
+    # ==========================================
+    # TOP PRODUCTS BY REVENUE
+    # ==========================================
+
     st.subheader("Top 10 Products by Revenue")
 
+    top_products = products.head(10).copy()
+
     fig = px.bar(
-        products.head(10),
+        top_products.sort_values("Revenue"),
         x="Revenue",
         y="Description",
         orientation="h",
+        color="Revenue",
+        color_continuous_scale=["#14B8A6", "#14213D"],
         template="plotly_white"
     )
 
-
     fig.update_layout(
-        yaxis={"categoryorder": "total ascending"},
+        title="Highest Revenue Generating Products",
         xaxis_title=f"Revenue ({selected_currency})",
-        xaxis_tickprefix=currency_symbol
+        xaxis_tickprefix=currency_symbol,
+        yaxis_title="Product",
+        title_font_color=navy,
+        font=dict(color=navy),
+        coloraxis_showscale=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white"
     )
 
     fig.update_traces(
         hovertemplate=(
-            f"Product: %{{y}}<br>"
+            "Product: %{y}<br>"
             f"Revenue: {currency_symbol}%{{x:,.2f}}"
             "<extra></extra>"
         )
@@ -1232,29 +1249,103 @@ elif page == "Product Intelligence":
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Top 10 Products by Quantity")
+    # ==========================================
+    # PRODUCT REVENUE DONUT
+    # ==========================================
 
+    st.subheader("Product Revenue Contribution")
+
+    product_donut = products.head(8).copy()
+
+    if len(products) > 8:
+
+        other_revenue = products.iloc[8:]["Revenue"].sum()
+
+        product_donut = pd.concat(
+            [
+                product_donut,
+                pd.DataFrame({
+                    "Description": ["Other Products"],
+                    "Revenue": [other_revenue]
+                })
+            ],
+            ignore_index=True
+        )
+
+    fig2 = px.pie(
+        product_donut,
+        names="Description",
+        values="Revenue",
+        hole=0.58,
+        color_discrete_sequence=[
+            navy, teal, "#38BDF8", "#64748B",
+            "#A5B4FC", "#2DD4BF", "#94A3B8",
+            "#0F766E", "#CBD5E1"
+        ]
+    )
+
+    fig2.update_traces(
+        textinfo="percent",
+        hovertemplate=(
+            "Product: %{label}<br>"
+            f"Revenue: {currency_symbol}%{{value:,.2f}}"
+            "<br>Share: %{percent}"
+            "<extra></extra>"
+        )
+    )
+
+    fig2.update_layout(
+        title="Revenue Share by Product",
+        title_font_color=navy,
+        font=dict(color=navy),
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # ==========================================
+    # TOP PRODUCTS BY QUANTITY
+    # ==========================================
+
+    st.subheader("Top 10 Products by Quantity Sold")
 
     quantity_top = products.nlargest(
         10, "Units"
-    )
+    ).sort_values("Units")
 
-    fig2 = px.bar(
+    fig3 = px.bar(
         quantity_top,
         x="Units",
         y="Description",
         orientation="h",
+        color_discrete_sequence=[teal],
         template="plotly_white"
     )
 
-    st.plotly_chart(fig2, use_container_width=True)
+    fig3.update_layout(
+        title="Best Selling Products by Quantity",
+        xaxis_title="Units Sold",
+        yaxis_title="Product",
+        title_font_color=navy,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(fig3, use_container_width=True)
+
+    # ==========================================
+    # PRODUCT PERFORMANCE TABLE
+    # ==========================================
 
     st.subheader("Complete Product Performance")
 
     display_products = products.copy()
 
-    display_products["Revenue"] = display_products["Revenue"].apply(
-        lambda x: f"{currency_symbol}{x:,.2f}"
+    display_products["Revenue"] = (
+        display_products["Revenue"].apply(
+            lambda x: f"{currency_symbol}{x:,.2f}"
+        )
     )
 
     st.dataframe(
@@ -1262,6 +1353,7 @@ elif page == "Product Intelligence":
         use_container_width=True,
         hide_index=True
     )
+
 
 # ==========================================
 # PAGE 4: MARKET ANALYSIS
