@@ -509,6 +509,18 @@ elif page == "Sales Forecast":
                 title="Future Revenue Forecast",
                 template="plotly_white"
             )
+            
+            fig.update_layout(
+                yaxis_title=f"Predicted Revenue ({selected_currency})",
+                yaxis_tickprefix=currency_symbol
+            )
+            
+            fig.update_traces(
+                hovertemplate=
+                f"Date: %{{x}}<br>"
+                f"Predicted Revenue: {currency_symbol}%{{y:,.2f}}"
+                "<extra></extra>"
+            )
 
             st.plotly_chart(
                 fig, use_container_width=True
