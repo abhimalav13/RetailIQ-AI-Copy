@@ -611,12 +611,12 @@ elif page == "AI Business Advisor":
     st.info(
         f"Your highest-revenue month was "
         f"{best_month['Month'].strftime('%B %Y')} "
-        f"with £{best_month['Revenue']:,.2f}."
+        f"with {currency_symbol}{best_month['Revenue']:,.2f}."
     )
 
     st.info(
         f"Your leading market is {best_country['Country']} "
-        f"with £{best_country['Revenue']:,.2f} revenue."
+        f"with {currency_symbol}{best_country['Revenue']:,.2f} revenue."
     )
 
     st.info(
@@ -645,7 +645,7 @@ elif page == "AI Business Advisor":
 
             answer = (
                 f"{best_country['Country']} leads with "
-                f"£{best_country['Revenue']:,.2f} revenue."
+                f"{currency_symbol}{best_country['Revenue']:,.2f} revenue."
             )
 
         elif "product" in q:
@@ -653,7 +653,7 @@ elif page == "AI Business Advisor":
             answer = (
                 f"{best_product['Description']} is the "
                 f"highest-revenue product with "
-                f"£{best_product['Revenue']:,.2f} revenue."
+                f"{currency_symbol}{best_product['Revenue']:,.2f} revenue."
             )
 
         elif "month" in q:
@@ -661,7 +661,7 @@ elif page == "AI Business Advisor":
             answer = (
                 f"{best_month['Month'].strftime('%B %Y')} "
                 f"was the best month, generating "
-                f"£{best_month['Revenue']:,.2f}."
+                f"{currency_symbol}{best_month['Revenue']:,.2f}."
             )
 
         elif "customer" in q:
@@ -678,7 +678,7 @@ elif page == "AI Business Advisor":
         elif "sales" in q or "revenue" in q:
 
             answer = (
-                f"Total revenue is £{total_revenue:,.2f}."
+                f"Total revenue is {currency_symbol}{total_revenue:,.2f}."
             )
 
         else:
