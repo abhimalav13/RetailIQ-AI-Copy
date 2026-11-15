@@ -1360,173 +1360,38 @@ elif page == "Product Intelligence":
 # ==========================================
 
 
+
 elif page == "Market Analysis":
 
-    st.header("Market Intelligence")
-
-    navy = "#14213D"
-    teal = "#14B8A6"
-
-    # ==========================================
-    # COUNTRY KPI METRICS
-    # ==========================================
-
-    top_country = countries.iloc[0]
-
-    total_markets = countries["Country"].nunique()
-
-    market_orders = countries["Orders"].sum()
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-        "Countries Served",
-        f"{total_markets:,}"
-    )
-
-    c2.metric(
-        "Leading Market",
-        top_country["Country"]
-    )
-
-    c3.metric(
-        "Total Market Revenue",
-        f"{currency_symbol}{total_revenue:,.2f}"
-    )
-
-    # ==========================================
-    # TOP 10 COUNTRIES BY REVENUE
-    # ==========================================
-
-    st.subheader("Top 10 Countries by Revenue")
-
-    top_countries = countries.head(10).copy()
+    st.header("Country-wise Market Analysis")
 
     fig = px.bar(
-        top_countries.sort_values("Revenue"),
-        x="Revenue",
-        y="Country",
-        orientation="h",
-        color="Revenue",
-        color_continuous_scale=["#14B8A6", "#14213D"],
+        countries.head(10),
+        x="Country",
+        y="Revenue",
+        title="Top 10 Countries by Revenue",
         template="plotly_white"
     )
 
     fig.update_layout(
-        title="Highest Revenue Generating Markets",
-        xaxis_title=f"Revenue ({selected_currency})",
-        xaxis_tickprefix=currency_symbol,
-        yaxis_title="Country",
-        title_font_color=navy,
-        font=dict(color=navy),
-        coloraxis_showscale=False,
-        plot_bgcolor="white",
-        paper_bgcolor="white"
+        yaxis_title=f"Revenue ({selected_currency})",
+        yaxis_tickprefix=currency_symbol
     )
 
     fig.update_traces(
         hovertemplate=(
-            "Country: %{y}<br>"
-            f"Revenue: {currency_symbol}%{{x:,.2f}}"
+            "Country: %{x}<br>"
+            f"Revenue: {currency_symbol}%{{y:,.2f}}"
             "<extra></extra>"
         )
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # ==========================================
-    # COUNTRY REVENUE DONUT
-    # ==========================================
-
-    st.subheader("Revenue Contribution by Country")
-
-    country_donut = countries.head(8).copy()
-
-    if len(countries) > 8:
-
-        other_revenue = countries.iloc[8:]["Revenue"].sum()
-
-        country_donut = pd.concat(
-            [
-                country_donut,
-                pd.DataFrame({
-                    "Country": ["Other Countries"],
-                    "Revenue": [other_revenue]
-                })
-            ],
-            ignore_index=True
-        )
-
-    fig2 = px.pie(
-        country_donut,
-        names="Country",
-        values="Revenue",
-        hole=0.58,
-        color_discrete_sequence=[
-            navy, teal, "#38BDF8", "#64748B",
-            "#A5B4FC", "#2DD4BF", "#94A3B8",
-            "#0F766E", "#CBD5E1"
-        ]
-    )
-
-    fig2.update_traces(
-        textinfo="percent",
-        hovertemplate=(
-            "Country: %{label}<br>"
-            f"Revenue: {currency_symbol}%{{value:,.2f}}"
-            "<br>Share: %{percent}"
-            "<extra></extra>"
-        )
-    )
-
-    fig2.update_layout(
-        title="Country Revenue Share",
-        title_font_color=navy,
-        font=dict(color=navy),
-        paper_bgcolor="white"
-    )
-
-    st.plotly_chart(fig2, use_container_width=True)
-
-    # ==========================================
-    # COUNTRY ORDER COMPARISON
-    # ==========================================
-
-    st.subheader("Orders by Country")
-
-    fig3 = px.bar(
-        countries.head(10).sort_values("Orders"),
-        x="Orders",
-        y="Country",
-        orientation="h",
-        color_discrete_sequence=[teal],
-        template="plotly_white"
-    )
-
-    fig3.update_layout(
-        title="Top 10 Markets by Number of Orders",
-        xaxis_title="Total Orders",
-        yaxis_title="Country",
-        title_font_color=navy,
-        font=dict(color=navy),
-        plot_bgcolor="white",
-        paper_bgcolor="white"
-    )
-
-    st.plotly_chart(fig3, use_container_width=True)
-
-    # ==========================================
-    # COUNTRY PERFORMANCE TABLE
-    # ==========================================
-
-    st.subheader("Country Performance Details")
-
     display_countries = countries.copy()
 
-    display_countries["Revenue"] = (
-        display_countries["Revenue"].apply(
-            lambda x: f"{currency_symbol}{x:,.2f}"
-        )
+    display_countries["Revenue"] = display_countries["Revenue"].apply(
+        lambda x: f"{currency_symbol}{x:,.2f}"
     )
 
     st.dataframe(
@@ -1535,21 +1400,18 @@ elif page == "Market Analysis":
         hide_index=True
     )
 
-    # ==========================================
-    # UK REVENUE CONTRIBUTION
-    # ==========================================
+    if total_revenue:
 
-    uk_revenue = countries.loc[
-        countries["Country"] == "United Kingdom",
-        "Revenue"
-    ].sum()
-
-    if total_revenue > 0:
+        uk_revenue = countries.loc[
+            countries["Country"] == "United Kingdom",
+            "Revenue"
+        ].sum()
 
         st.metric(
             "UK Revenue Contribution",
             f"{uk_revenue / total_revenue * 100:.1f}%"
         )
+
 
 
 # ==========================================
