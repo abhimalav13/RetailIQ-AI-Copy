@@ -994,26 +994,41 @@ if page == "Business Overview":
 # PAGE 2: SALES ANALYTICS
 # ==========================================
 
+
 elif page == "Sales Analytics":
 
     st.header("Sales Analytics")
+    navy = "#14213D"
+    teal = "#14B8A6"
+
+    # ==========================================
+    # MONTHLY REVENUE
+    # ==========================================
+
+    st.subheader("Monthly Revenue Performance")
 
     fig = px.bar(
         monthly,
         x="Month",
         y="Revenue",
         title="Monthly Revenue",
+        color_discrete_sequence=[teal],
         template="plotly_white"
     )
 
     fig.update_layout(
         yaxis_title=f"Revenue ({selected_currency})",
-        yaxis_tickprefix=currency_symbol
+        xaxis_title="Month",
+        yaxis_tickprefix=currency_symbol,
+        title_font_color=navy,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
     )
-    
+
     fig.update_traces(
         hovertemplate=(
-            f"Month: %{{x}}<br>"
+            "Month: %{x|%B %Y}<br>"
             f"Revenue: {currency_symbol}%{{y:,.2f}}"
             "<extra></extra>"
         )
@@ -1021,24 +1036,166 @@ elif page == "Sales Analytics":
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # ==========================================
+    # MONTHLY ORDERS
+    # ==========================================
+
+    st.subheader("Monthly Order Trends")
+
     fig2 = px.line(
         monthly,
         x="Month",
         y="Orders",
         markers=True,
         title="Monthly Orders",
+        color_discrete_sequence=[navy],
         template="plotly_white"
+    )
+
+    fig2.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Number of Orders",
+        title_font_color=navy,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
     )
 
     st.plotly_chart(fig2, use_container_width=True)
 
+    # ==========================================
+    # DAILY SALES WITH DATE FILTER
+    # ==========================================
+
+    st.subheader("Daily Sales Analysis")
+
+    min_date = df["InvoiceDate"].min().date()
+    max_date = df["InvoiceDate"].max().date()
+
+    selected_dates = st.date_input(
+        "Select date range",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
+
+        start_date, end_date = selected_dates
+
+        filtered_df = df[
+            df["InvoiceDate"].dt.date.between(
+                start_date, end_date
+            )
+        ].copy()
+
+        if not filtered_df.empty:
+
+            filtered_daily = (
+                filtered_df.groupby(
+                    filtered_df["InvoiceDate"].dt.date
+                )["Revenue"]
+                .sum()
+                .reset_index()
+            )
+
+            filtered_daily.columns = ["Date", "Revenue"]
+
+            fig3 = px.area(
+                filtered_daily,
+                x="Date",
+                y="Revenue",
+                title="Daily Revenue Trend",
+                color_discrete_sequence=[teal],
+                template="plotly_white"
+            )
+
+            fig3.update_layout(
+                xaxis_title="Date",
+                yaxis_title=f"Revenue ({selected_currency})",
+                yaxis_tickprefix=currency_symbol,
+                title_font_color=navy,
+                font=dict(color=navy),
+                plot_bgcolor="white",
+                paper_bgcolor="white"
+            )
+
+            st.plotly_chart(
+                fig3,
+                use_container_width=True
+            )
+
+        else:
+            st.warning("No sales found in this date range.")
+
+    # ==========================================
+    # WEEKDAY REVENUE ANALYSIS
+    # ==========================================
+
+    st.subheader("Revenue by Day of the Week")
+
+    weekday_df = df.copy()
+
+    weekday_df["Weekday"] = (
+        weekday_df["InvoiceDate"].dt.day_name()
+    )
+
+    weekday_order = [
+        "Monday", "Tuesday", "Wednesday",
+        "Thursday", "Friday", "Saturday", "Sunday"
+    ]
+
+    weekday_sales = (
+        weekday_df.groupby("Weekday")["Revenue"]
+        .sum()
+        .reindex(weekday_order, fill_value=0)
+        .reset_index()
+    )
+
+    fig4 = px.bar(
+        weekday_sales,
+        x="Weekday",
+        y="Revenue",
+        title="Which Days Generate the Most Revenue?",
+        color_discrete_sequence=[teal],
+        template="plotly_white"
+    )
+
+    fig4.update_layout(
+        xaxis_title="Day of the Week",
+        yaxis_title=f"Revenue ({selected_currency})",
+        yaxis_tickprefix=currency_symbol,
+        title_font_color=navy,
+        font=dict(color=navy),
+        plot_bgcolor="white",
+        paper_bgcolor="white"
+    )
+
+    st.plotly_chart(
+        fig4,
+        use_container_width=True
+    )
+
+    # ==========================================
+    # MONTHLY PERFORMANCE TABLE
+    # ==========================================
+
     st.subheader("Monthly Performance Data")
 
+    display_monthly = monthly.copy()
+
+    display_monthly["Revenue"] = (
+        display_monthly["Revenue"].apply(
+            lambda x: f"{currency_symbol}{x:,.2f}"
+        )
+    )
+
     st.dataframe(
-        monthly,
+        display_monthly,
         use_container_width=True,
         hide_index=True
     )
+
 
 # ==========================================
 # PAGE 3: PRODUCT INTELLIGENCE
