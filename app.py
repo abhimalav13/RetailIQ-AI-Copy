@@ -763,6 +763,7 @@ if page == "Business Overview":
         order_values,
         x="OrderValue",
         nbins=30,
+        log_x=True,
         template="plotly_white",
         color_discrete_sequence=[teal]
     )
