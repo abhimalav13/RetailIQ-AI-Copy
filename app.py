@@ -496,12 +496,11 @@ elif page == "Sales Forecast":
             })
 
             
-st.metric(
-    "Next 30-Day Forecast",
-    f"{currency_symbol}{forecast.sum():,.2f}"
-)
-
-
+            st.metric(
+                "Next 30-Day Forecast",
+                f"{currency_symbol}{forecast.sum():,.2f}"
+            )
+            
             fig = px.line(
                 forecast_df,
                 x="Date",
