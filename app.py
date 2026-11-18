@@ -264,156 +264,132 @@ except Exception as e:
 
 
 # ==========================================
-# SMART DATASET COLUMN MAPPING
+# SMART DATASET COLUMN MAPPING - STEP 1
 # ==========================================
 
 required_columns = [
-    "InvoiceNo",
-    "StockCode",
-    "Description",
-    "Quantity",
-    "InvoiceDate",
-    "UnitPrice",
-    "Country"
+    "InvoiceNo", "StockCode", "Description",
+    "Quantity", "InvoiceDate", "UnitPrice", "Country"
 ]
 
-# Normalize column names for comparison
 def normalize_column(col):
-    return "".join(
-        ch.lower() for ch in str(col) if ch.isalnum()
-    )
+    return "".join(ch.lower() for ch in str(col) if ch.isalnum())
 
-column_lookup = {
-    normalize_column(col): col
-    for col in raw_df.columns
-}
-
-# Alternative names for common retail columns
 column_aliases = {
-    "InvoiceNo": [
-        "invoiceno", "invoice", "invoiceid",
-        "orderid", "ordernumber", "transactionid"
-    ],
-    "StockCode": [
-        "stockcode", "productid", "productcode",
-        "sku", "itemcode"
-    ],
-    "Description": [
-        "description", "productname",
-        "itemname", "product"
-    ],
-    "Quantity": [
-        "quantity", "qty", "unitssold",
-        "numberofitems"
-    ],
-    "InvoiceDate": [
-        "invoicedate", "orderdate",
-        "transactiondate", "date"
-    ],
-    "UnitPrice": [
-        "unitprice", "sellingprice",
-        "priceperunit", "price"
-    ],
-    "Country": [
-        "country", "customercountry",
-        "market", "region"
-    ]
+    "InvoiceNo": ["invoiceno", "invoice", "invoiceid", "orderid",
+                  "ordernumber", "transactionid", "purchaseid"],
+    "StockCode": ["stockcode", "productid", "productcode", "sku",
+                  "itemcode", "productsku"],
+    "Description": ["description", "productname", "itemname", "product",
+                    "productcategoryname", "categoryname", "itemdescription"],
+    "Quantity": ["quantity", "qty", "unitssold", "numberofitems",
+                 "quantitysold", "itemquantity"],
+    "InvoiceDate": ["invoicedate", "orderdate", "transactiondate", "date",
+                    "orderpurchasetimestamp", "purchasedate", "createdat"],
+    "UnitPrice": ["unitprice", "sellingprice", "priceperunit", "price",
+                  "itemprice", "productprice"],
+    "Country": ["country", "customercountry", "market", "salescountry"],
+    "CustomerID": ["customerid", "customeruniqueid", "clientid", "buyerid"]
 }
 
+column_lookup = {normalize_column(col): col for col in raw_df.columns}
 rename_map = {}
 used_columns = set()
 unmapped_columns = []
 
-# Automatically detect matching columns
 for target in required_columns:
-
     matched_column = None
-
     for alias in column_aliases[target]:
-
         normalized_alias = normalize_column(alias)
-
         if normalized_alias in column_lookup:
-
             candidate = column_lookup[normalized_alias]
-
             if candidate not in used_columns:
                 matched_column = candidate
                 break
-
     if matched_column is not None:
-
         rename_map[matched_column] = target
         used_columns.add(matched_column)
-
     else:
         unmapped_columns.append(target)
 
+# Customer ID is optional; detect it when available.
+for alias in column_aliases["CustomerID"]:
+    normalized_alias = normalize_column(alias)
+    if normalized_alias in column_lookup:
+        candidate = column_lookup[normalized_alias]
+        if candidate not in used_columns:
+            rename_map[candidate] = "CustomerID"
+            used_columns.add(candidate)
+            break
 
-# Ask the user to map columns that were not detected
-if unmapped_columns:
-
-    st.subheader("Map Your Dataset Columns")
-
+# Country is optional for sales analysis. Do not mistake city/state for country.
+if "Country" in unmapped_columns:
+    unmapped_columns.remove("Country")
+    raw_df["Country"] = "Unknown"
     st.info(
-        "Some columns could not be detected automatically. "
-        "Please select the matching columns below."
+        "No country column was detected. Market analysis will show "
+        "'Unknown' until a country field is provided."
     )
 
+if rename_map:
+    st.success(f"Automatically detected {len(rename_map)} column(s).")
+
+with st.expander("Review automatically detected columns"):
+    if rename_map:
+        mapping_df = pd.DataFrame(
+            list(rename_map.items()),
+            columns=["Uploaded Column", "RetailIQ AI Field"]
+        )
+        st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("No recognised columns were detected.")
+
+# Manual mapping remains available only when automatic detection is unsure.
+if unmapped_columns:
+    st.subheader("A few columns need your attention")
+    st.info(
+        "RetailIQ AI could not confidently identify every required field. "
+        "Select the matching columns or upload a combined transaction-level file."
+    )
     for target in unmapped_columns:
-
         available_columns = [
-            col for col in raw_df.columns
-            if col not in used_columns
+            col for col in raw_df.columns if col not in used_columns
         ]
-
         selected_column = st.selectbox(
             f"Select column for {target}",
             ["-- Select a column --"] + available_columns,
             key=f"mapping_{target}"
         )
-
         if selected_column != "-- Select a column --":
-
             rename_map[selected_column] = target
             used_columns.add(selected_column)
 
-
-# Stop if required columns are still missing
 mapped_targets = list(rename_map.values())
-
 missing_columns = [
-    col for col in required_columns
-    if col not in mapped_targets
+    col for col in required_columns if col not in mapped_targets
 ]
 
 if missing_columns:
-
-    st.warning(
-        f"Please map these required fields: {missing_columns}"
+    st.error(
+        f"This file does not contain enough transaction information. "
+        f"Missing fields: {missing_columns}"
     )
-
+    normalized_names = {normalize_column(c) for c in raw_df.columns}
+    if "customerid" in normalized_names or "customeruniqueid" in normalized_names:
+        st.warning(
+            "This appears to be a customer-level file. A customer file alone "
+            "does not contain order, product, date and price information. "
+            "For Olist, combine the orders, order-items, products and customer "
+            "files before uploading."
+        )
     st.stop()
 
-
-# Rename uploaded columns to standard RetailIQ AI names
 raw_df = raw_df.rename(columns=rename_map)
 
-st.success("Dataset columns successfully mapped!")
+if "CustomerID" not in raw_df.columns:
+    raw_df["CustomerID"] = np.nan
 
-with st.expander("View detected column mapping"):
-
-    mapping_df = pd.DataFrame(
-        list(rename_map.items()),
-        columns=["Original Column", "RetailIQ AI Column"]
-    )
-
-    st.dataframe(
-        mapping_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
+st.success("Dataset columns are ready for RetailIQ AI.")
 
 # ==========================================
 # DATA CLEANING
