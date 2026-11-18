@@ -195,227 +195,329 @@ selected_currency = st.sidebar.selectbox(
 
 currency_symbol = currency_options[selected_currency]["symbol"]
 
-uploaded_file = st.sidebar.file_uploader(
-    "Upload your retail dataset",
-    type=["csv", "xlsx"]
+uploaded_files = st.sidebar.file_uploader(
+    "Upload retail dataset(s)",
+    type=["csv", "xlsx"],
+    accept_multiple_files=True,
+    help="Upload one transaction file, or multiple related Olist CSV files."
 )
-
 
 st.sidebar.info(
-    "Upload your retail dataset in CSV or Excel format. "
-    "RetailIQ AI automatically detects common column names "
-    "and lets you map columns manually when needed. "
-    "Required data: Order ID, Product, Quantity, Date, "
-    "Unit Price and Country."
+    "Upload one retail transaction file, or upload related Olist CSV files "
+    "together. RetailIQ AI will detect and combine supported Olist tables."
 )
 
 
 # ==========================================
-# DATA LOADING
+# DATA LOADING & OLIST MULTI-FILE INTEGRATION
 # ==========================================
+
+import io
+import os
 
 @st.cache_data
 def load_data(file_bytes, file_name):
-
-    import io
-
     if file_name.lower().endswith(".csv"):
-        data = pd.read_csv(io.BytesIO(file_bytes))
-    else:
-        data = pd.read_excel(io.BytesIO(file_bytes))
+        return pd.read_csv(io.BytesIO(file_bytes))
+    return pd.read_excel(io.BytesIO(file_bytes))
 
-    return data
-
-
-if uploaded_file is None:
-
-    st.warning(
-        "Please upload a CSV or Excel retail dataset "
-        "using the sidebar to begin."
-    )
-
-    st.markdown("""
-    ### Welcome to RetailIQ AI
-
-    Analyse your retail business with:
-
-    - Sales and revenue intelligence
-    - Product performance analytics
-    - Market analysis
-    - Sales forecasting
-    - AI-assisted business recommendations
-
-    **Getting started:** Upload your retail transaction data.
-    """)
-
-    st.stop()
-
-
-try:
-    raw_df = load_data(
-        uploaded_file.getvalue(),
-        uploaded_file.name
-    )
-
-except Exception as e:
-    st.error(f"Unable to read the file: {e}")
-    st.stop()
-
-
-
-# ==========================================
-# SMART DATASET COLUMN MAPPING - STEP 1
-# ==========================================
-
-required_columns = [
-    "InvoiceNo", "StockCode", "Description",
-    "Quantity", "InvoiceDate", "UnitPrice", "Country"
-]
 
 def normalize_column(col):
     return "".join(ch.lower() for ch in str(col) if ch.isalnum())
 
-column_aliases = {
-    "InvoiceNo": ["invoiceno", "invoice", "invoiceid", "orderid",
-                  "ordernumber", "transactionid", "purchaseid"],
-    "StockCode": ["stockcode", "productid", "productcode", "sku",
-                  "itemcode", "productsku"],
-    "Description": ["description", "productname", "itemname", "product",
-                    "productcategoryname", "categoryname", "itemdescription"],
-    "Quantity": ["quantity", "qty", "unitssold", "numberofitems",
-                 "quantitysold", "itemquantity"],
-    "InvoiceDate": ["invoicedate", "orderdate", "transactiondate", "date",
-                    "orderpurchasetimestamp", "purchasedate", "createdat"],
-    "UnitPrice": ["unitprice", "sellingprice", "priceperunit", "price",
-                  "itemprice", "productprice"],
-    "Country": ["country", "customercountry", "market", "salescountry"],
-    "CustomerID": ["customerid", "customeruniqueid", "clientid", "buyerid"]
-}
 
-column_lookup = {normalize_column(col): col for col in raw_df.columns}
-rename_map = {}
-used_columns = set()
-unmapped_columns = []
+def find_uploaded_file(file_map, required_name):
+    """Find an uploaded CSV by its base filename, ignoring extension/case."""
+    target = normalize_column(required_name)
+    for normalized_name, dataframe in file_map.items():
+        if normalized_name == target:
+            return dataframe
+    return None
 
-for target in required_columns:
-    matched_column = None
-    for alias in column_aliases[target]:
-        normalized_alias = normalize_column(alias)
-        if normalized_alias in column_lookup:
-            candidate = column_lookup[normalized_alias]
-            if candidate not in used_columns:
-                matched_column = candidate
-                break
-    if matched_column is not None:
-        rename_map[matched_column] = target
-        used_columns.add(matched_column)
-    else:
-        unmapped_columns.append(target)
 
-# Customer ID is optional; detect it when available.
-for alias in column_aliases["CustomerID"]:
-    normalized_alias = normalize_column(alias)
-    if normalized_alias in column_lookup:
-        candidate = column_lookup[normalized_alias]
-        if candidate not in used_columns:
-            rename_map[candidate] = "CustomerID"
-            used_columns.add(candidate)
-            break
-
-# Country is optional for sales analysis. Do not mistake city/state for country.
-if "Country" in unmapped_columns:
-    unmapped_columns.remove("Country")
-    raw_df["Country"] = "Unknown"
-    st.info(
-        "No country column was detected. Market analysis will show "
-        "'Unknown' until a country field is provided."
+if not uploaded_files:
+    st.warning(
+        "Please upload a CSV/Excel transaction file or multiple related Olist CSV files "
+        "using the sidebar to begin."
     )
+    st.markdown("""
+    ### Welcome to RetailIQ AI
 
-if rename_map:
-    st.success(f"Automatically detected {len(rename_map)} column(s).")
+    Analyse your retail business with:
+    - Sales and revenue intelligence
+    - Product performance analytics
+    - Market analysis
+    - Sales forecasting
+    - Business recommendations
 
-with st.expander("Review automatically detected columns"):
-    if rename_map:
-        mapping_df = pd.DataFrame(
-            list(rename_map.items()),
-            columns=["Uploaded Column", "RetailIQ AI Field"]
-        )
-        st.dataframe(mapping_df, use_container_width=True, hide_index=True)
-    else:
-        st.warning("No recognised columns were detected.")
-
-# Manual mapping remains available only when automatic detection is unsure.
-if unmapped_columns:
-    st.subheader("A few columns need your attention")
-    st.info(
-        "RetailIQ AI could not confidently identify every required field. "
-        "Select the matching columns or upload a combined transaction-level file."
-    )
-    for target in unmapped_columns:
-        available_columns = [
-            col for col in raw_df.columns if col not in used_columns
-        ]
-        selected_column = st.selectbox(
-            f"Select column for {target}",
-            ["-- Select a column --"] + available_columns,
-            key=f"mapping_{target}"
-        )
-        if selected_column != "-- Select a column --":
-            rename_map[selected_column] = target
-            used_columns.add(selected_column)
-
-mapped_targets = list(rename_map.values())
-missing_columns = [
-    col for col in required_columns if col not in mapped_targets
-]
-
-if missing_columns:
-    st.error(
-        f"This file does not contain enough transaction information. "
-        f"Missing fields: {missing_columns}"
-    )
-    normalized_names = {normalize_column(c) for c in raw_df.columns}
-    if "customerid" in normalized_names or "customeruniqueid" in normalized_names:
-        st.warning(
-            "This appears to be a customer-level file. A customer file alone "
-            "does not contain order, product, date and price information. "
-            "For Olist, combine the orders, order-items, products and customer "
-            "files before uploading."
-        )
+    **Getting started:** Upload your retail transaction data. For Olist, select the
+    orders, order-items, products and customers CSV files together.
+    """)
     st.stop()
 
-raw_df = raw_df.rename(columns=rename_map)
 
-if "CustomerID" not in raw_df.columns:
-    raw_df["CustomerID"] = np.nan
+try:
+    uploaded_data = {}
+    for file in uploaded_files:
+        base_name = os.path.splitext(file.name)[0]
+        uploaded_data[normalize_column(base_name)] = load_data(
+            file.getvalue(), file.name
+        )
+except Exception as e:
+    st.error(f"Unable to read one of the uploaded files: {e}")
+    st.stop()
 
-st.success("Dataset columns are ready for RetailIQ AI.")
+
+# Detect Olist multi-table upload by its characteristic file names.
+olist_orders = find_uploaded_file(uploaded_data, "olist_orders_dataset")
+olist_items = find_uploaded_file(uploaded_data, "olist_order_items_dataset")
+olist_products = find_uploaded_file(uploaded_data, "olist_products_dataset")
+olist_customers = find_uploaded_file(uploaded_data, "olist_customers_dataset")
+olist_sellers = find_uploaded_file(uploaded_data, "olist_sellers_dataset")
+olist_reviews = find_uploaded_file(uploaded_data, "olist_order_reviews_dataset")
+olist_translation = find_uploaded_file(uploaded_data, "product_category_name_translation")
+
+is_olist_upload = any([
+    olist_orders is not None,
+    olist_items is not None,
+    olist_products is not None,
+    olist_customers is not None
+])
+
+if is_olist_upload:
+    missing_olist = []
+    for label, table in [
+        ("olist_orders_dataset.csv", olist_orders),
+        ("olist_order_items_dataset.csv", olist_items),
+        ("olist_products_dataset.csv", olist_products),
+        ("olist_customers_dataset.csv", olist_customers),
+    ]:
+        if table is None:
+            missing_olist.append(label)
+
+    if missing_olist:
+        st.error(
+            "Olist upload is incomplete. Please upload these required files together: "
+            + ", ".join(missing_olist)
+        )
+        st.stop()
+
+    required_schemas = {
+        "orders": {"order_id", "customer_id", "order_purchase_timestamp", "order_status"},
+        "items": {"order_id", "order_item_id", "product_id", "seller_id", "price"},
+        "products": {"product_id", "product_category_name"},
+        "customers": {"customer_id", "customer_unique_id", "customer_city", "customer_state"},
+    }
+    supplied_tables = {
+        "orders": olist_orders,
+        "items": olist_items,
+        "products": olist_products,
+        "customers": olist_customers,
+    }
+    schema_errors = []
+    for table_name, required in required_schemas.items():
+        missing = required - set(supplied_tables[table_name].columns)
+        if missing:
+            schema_errors.append(f"{table_name}: {sorted(missing)}")
+    if schema_errors:
+        st.error("The uploaded Olist files have unexpected columns: " + "; ".join(schema_errors))
+        st.stop()
+
+    # Keep the order-item grain: one row represents one product line in an order.
+    # Join only one-to-one / many-to-one tables to avoid multiplying sales rows.
+    orders_for_join = olist_orders.copy()
+    items_for_join = olist_items.copy()
+    products_for_join = olist_products.copy()
+    customers_for_join = olist_customers.copy()
+
+    orders_for_join["order_purchase_timestamp"] = pd.to_datetime(
+        orders_for_join["order_purchase_timestamp"], errors="coerce"
+    )
+    orders_for_join = orders_for_join.dropna(subset=["order_id"])
+    items_for_join = items_for_join.dropna(subset=["order_id", "product_id"])
+
+    # Use delivered orders for completed-sales KPIs; report the status filter to the user.
+    delivered_orders = orders_for_join[
+        orders_for_join["order_status"].astype(str).str.lower().eq("delivered")
+    ].copy()
+    if delivered_orders.empty:
+        st.error("No delivered orders were found. Check the Olist orders file.")
+        st.stop()
+
+    # Remove accidental duplicate dimension keys before joining.
+    products_for_join = products_for_join.drop_duplicates(subset=["product_id"])
+    customers_for_join = customers_for_join.drop_duplicates(subset=["customer_id"])
+
+    combined = items_for_join.merge(
+        delivered_orders[["order_id", "customer_id", "order_purchase_timestamp", "order_status"]],
+        on="order_id", how="inner", validate="many_to_one"
+    )
+    combined = combined.merge(
+        products_for_join, on="product_id", how="left", validate="many_to_one"
+    )
+    combined = combined.merge(
+        customers_for_join[[
+            "customer_id", "customer_unique_id", "customer_city", "customer_state"
+        ]],
+        on="customer_id", how="left", validate="many_to_one"
+    )
+
+    if olist_translation is not None and {
+        "product_category_name", "product_category_name_english"
+    }.issubset(olist_translation.columns):
+        translation = olist_translation.drop_duplicates(subset=["product_category_name"])
+        combined = combined.merge(
+            translation, on="product_category_name", how="left", validate="many_to_one"
+        )
+        category_name = combined["product_category_name_english"].fillna(
+            combined["product_category_name"]
+        )
+    else:
+        category_name = combined["product_category_name"]
+
+    # Seller and review data are supplementary; review rows are aggregated first
+    # so they cannot multiply order-item records.
+    if olist_sellers is not None and {"seller_id", "seller_city", "seller_state"}.issubset(olist_sellers.columns):
+        seller_dim = olist_sellers.drop_duplicates(subset=["seller_id"])
+        combined = combined.merge(
+            seller_dim[["seller_id", "seller_city", "seller_state"]],
+            on="seller_id", how="left", validate="many_to_one"
+        )
+
+    if olist_reviews is not None and {"order_id", "review_score"}.issubset(olist_reviews.columns):
+        review_summary = (
+            olist_reviews.assign(review_score=pd.to_numeric(
+                olist_reviews["review_score"], errors="coerce"
+            ))
+            .groupby("order_id", as_index=False)
+            .agg(ReviewScore=("review_score", "mean"))
+        )
+        combined = combined.merge(
+            review_summary, on="order_id", how="left", validate="many_to_one"
+        )
+
+    raw_df = pd.DataFrame({
+        "InvoiceNo": combined["order_id"],
+        "StockCode": combined["product_id"],
+        "Description": category_name.fillna("Uncategorised"),
+        "Quantity": 1,
+        "InvoiceDate": combined["order_purchase_timestamp"],
+        "UnitPrice": combined["price"],
+        "Country": "Brazil",
+        "CustomerID": combined["customer_unique_id"],
+    })
+    # Preserve useful Olist attributes for later customer/region/seller analysis.
+    for optional_col in [
+        "customer_city", "customer_state", "seller_id", "seller_city",
+        "seller_state", "freight_value", "order_item_id", "ReviewScore",
+        "product_category_name"
+    ]:
+        if optional_col in combined.columns:
+            raw_df[optional_col] = combined[optional_col].values
+
+    st.success(
+        f"Olist dataset integrated successfully: {len(raw_df):,} order-item rows "
+        f"from {raw_df['InvoiceNo'].nunique():,} delivered orders."
+    )
+    st.caption(
+        "Olist preparation: one row per order item; quantity is represented as 1 per item row; "
+        "sales revenue uses item price and excludes freight. Only delivered orders are included."
+    )
+
+else:
+    if len(uploaded_files) != 1:
+        st.error(
+            "These files were not recognised as an Olist multi-file dataset. "
+            "Please upload one standard transaction file, or the four required Olist files."
+        )
+        st.stop()
+
+    raw_df = next(iter(uploaded_data.values()))
+
+    required_columns = [
+        "InvoiceNo", "StockCode", "Description", "Quantity",
+        "InvoiceDate", "UnitPrice"
+    ]
+    column_aliases = {
+        "InvoiceNo": ["invoiceno", "invoice", "invoiceid", "orderid", "ordernumber", "transactionid"],
+        "StockCode": ["stockcode", "productid", "productcode", "sku", "itemcode"],
+        "Description": ["description", "productname", "itemname", "product", "productcategoryname"],
+        "Quantity": ["quantity", "qty", "unitssold", "numberofitems"],
+        "InvoiceDate": ["invoicedate", "orderdate", "transactiondate", "date", "orderpurchasetimestamp"],
+        "UnitPrice": ["unitprice", "sellingprice", "priceperunit", "price"],
+        "Country": ["country", "customercountry", "market", "salescountry"],
+        "CustomerID": ["customerid", "customeruniqueid", "clientid", "buyerid"],
+    }
+    column_lookup = {normalize_column(col): col for col in raw_df.columns}
+    rename_map = {}
+    used_columns = set()
+    unmapped_columns = []
+
+    for target in required_columns + ["Country", "CustomerID"]:
+        matched = None
+        for alias in column_aliases[target]:
+            candidate = column_lookup.get(normalize_column(alias))
+            if candidate is not None and candidate not in used_columns:
+                matched = candidate
+                break
+        if matched is not None:
+            rename_map[matched] = target
+            used_columns.add(matched)
+        elif target in required_columns:
+            unmapped_columns.append(target)
+
+    if unmapped_columns:
+        st.subheader("A few columns need your attention")
+        st.info(
+            "RetailIQ AI could not confidently identify every required field. "
+            "Select the matching columns below."
+        )
+        for target in unmapped_columns:
+            available = [c for c in raw_df.columns if c not in used_columns]
+            selected = st.selectbox(
+                f"Select column for {target}",
+                ["-- Select a column --"] + available,
+                key=f"mapping_{target}"
+            )
+            if selected != "-- Select a column --":
+                rename_map[selected] = target
+                used_columns.add(selected)
+
+    mapped_targets = list(rename_map.values())
+    missing = [c for c in required_columns if c not in mapped_targets]
+    if missing:
+        st.warning(f"Please map these required fields: {missing}")
+        st.stop()
+
+    raw_df = raw_df.rename(columns=rename_map)
+    if "Country" not in raw_df.columns:
+        raw_df["Country"] = "Unknown"
+        st.info("No country column was detected. Market analysis will show 'Unknown'.")
+    if "CustomerID" not in raw_df.columns:
+        raw_df["CustomerID"] = np.nan
+
+    st.success("Dataset columns successfully mapped!")
+    with st.expander("Review automatically detected columns"):
+        mapping_df = pd.DataFrame(
+            list(rename_map.items()),
+            columns=["Original Column", "RetailIQ AI Column"]
+        )
+        st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+
 
 # ==========================================
 # DATA CLEANING
 # ==========================================
 
 df = raw_df.copy()
+df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
+df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce")
+df["UnitPrice"] = pd.to_numeric(df["UnitPrice"], errors="coerce")
+df["Country"] = df["Country"].fillna("Unknown").astype(str)
+df["Description"] = df["Description"].fillna("Uncategorised").astype(str)
 
-df["InvoiceDate"] = pd.to_datetime(
-    df["InvoiceDate"],
-    errors="coerce"
-)
-
-df["Quantity"] = pd.to_numeric(
-    df["Quantity"], errors="coerce"
-)
-
-df["UnitPrice"] = pd.to_numeric(
-    df["UnitPrice"], errors="coerce"
-)
-
-cancelled = (
-    df["InvoiceNo"].astype(str).str.startswith("C")
-)
-
+cancelled = df["InvoiceNo"].astype(str).str.startswith("C")
 returns = df["Quantity"] < 0
-
 return_count = int(returns.sum())
 cancelled_count = int(cancelled.sum())
 
@@ -423,17 +525,14 @@ df = df[
     (~cancelled) &
     (df["Quantity"] > 0) &
     (df["UnitPrice"] > 0) &
-    (df["Description"].notna()) &
     (df["InvoiceDate"].notna()) &
-    (df["Country"].notna())
+    (df["StockCode"].notna())
 ].copy()
 
-df["Revenue"] = (
-    df["Quantity"] * df["UnitPrice"]
-)
+df["Revenue"] = df["Quantity"] * df["UnitPrice"]
 
 if df.empty:
-    st.error("No valid sales records found.")
+    st.error("No valid sales records found after data cleaning.")
     st.stop()
 
 
