@@ -1091,6 +1091,98 @@ def _forecast_from_daily_series(series, horizon=30):
     return fitted.forecast(horizon)
 
 
+@st.cache_data(show_spinner=False)
+def _build_executive_insight_summary(frame, roles, insights, recommendations):
+    """Create a concise, evidence-linked executive summary using transparent rules."""
+    summary_parts = []
+    measure_col = roles.get("Revenue / Sales") or roles.get("Quantity / Units")
+    date_col = roles.get("Date / Timestamp")
+    category_col = roles.get("Category") or roles.get("Product") or roles.get("Geography")
+
+    if measure_col and measure_col in frame.columns:
+        values = pd.to_numeric(frame[measure_col], errors="coerce").dropna()
+        if not values.empty:
+            summary_parts.append(
+                f"The selected dataset contains {len(frame):,} records. "
+                f"Recorded {measure_col.lower()} totals {values.sum():,.2f}, "
+                f"with an average of {values.mean():,.2f} per valid record."
+            )
+    if category_col and category_col in frame.columns and measure_col:
+        values = pd.to_numeric(frame[measure_col], errors="coerce")
+        grouped = pd.DataFrame({
+            "group": frame[category_col].astype("string"),
+            "value": values
+        }).dropna().groupby("group")["value"].sum().sort_values(ascending=False)
+        if not grouped.empty:
+            total = grouped.sum()
+            share = grouped.iloc[0] / total * 100 if total else 0
+            summary_parts.append(
+                f"{grouped.index[0]} is the largest contributing {category_col.lower()} "
+                f"({share:.1f}% of grouped {measure_col.lower()})."
+            )
+    if date_col and measure_col:
+        dates = pd.to_datetime(frame[date_col], errors="coerce")
+        values = pd.to_numeric(frame[measure_col], errors="coerce")
+        trend = pd.DataFrame({"date": dates, "value": values}).dropna()
+        if not trend.empty:
+            monthly = trend.set_index("date")["value"].resample("MS").sum()
+            if len(monthly) >= 2 and monthly.iloc[0] != 0:
+                change = (monthly.iloc[-1] - monthly.iloc[0]) / abs(monthly.iloc[0]) * 100
+                direction = "higher" if change > 0 else "lower" if change < 0 else "unchanged"
+                summary_parts.append(
+                    f"The latest observed month is {abs(change):.1f}% {direction} "
+                    f"than the first observed month in the selected period."
+                )
+
+    if not summary_parts:
+        summary_parts.append(
+            f"The selected table contains {len(frame):,} records and {len(frame.columns):,} columns. "
+            "Validated business measures were not sufficient for a deeper executive summary."
+        )
+
+    rows = []
+    high_terms = ("declin", "downward", "lowest", "missing", "quality", "at risk", "churn", "delivery")
+    medium_terms = ("contribut", "concentration", "dependence", "growth", "movement", "top")
+    recommendation_priority = {
+        heading.lower(): priority for priority, heading, _ in recommendations
+    }
+    for heading, detail in insights:
+        lowered = heading.lower() + " " + detail.lower()
+        matched_priority = next(
+            (priority for rec_heading, priority in recommendation_priority.items()
+             if any(term in lowered for term in rec_heading.split() if len(term) > 4)),
+            None
+        )
+        if matched_priority:
+            priority = matched_priority
+        elif any(term in lowered for term in high_terms):
+            priority = "High"
+        elif any(term in lowered for term in medium_terms):
+            priority = "Medium"
+        else:
+            priority = "Monitor"
+        rows.append({
+            "Priority": priority,
+            "Insight": heading,
+            "Evidence": detail,
+            "Suggested next step": (
+                "Investigate the underlying records and validate the cause."
+                if priority == "High" else
+                "Compare contributing segments and monitor the next reporting period."
+                if priority == "Medium" else
+                "Use as a baseline and review when new data becomes available."
+            )
+        })
+    priority_order = {"High": 0, "Medium": 1, "Monitor": 2}
+    insight_table = pd.DataFrame(rows)
+    if not insight_table.empty:
+        insight_table["_sort"] = insight_table["Priority"].map(priority_order)
+        insight_table = insight_table.sort_values(
+            ["_sort", "Insight"], kind="stable"
+        ).drop(columns="_sort").reset_index(drop=True)
+    return " ".join(summary_parts), insight_table
+
+
 def _build_business_action_plan(recommendations, roles):
     """Translate evidence-based recommendation rules into a practical action register."""
     plans = []
@@ -1713,6 +1805,30 @@ def _render_adaptive_workspace(tables):
         st.info("Custom breakdown needs at least one detected category and one numeric measure.")
 
     business_insights = _generate_business_insights(working, validated_roles)
+    business_recommendations = _generate_business_recommendations(working, validated_roles)
+    executive_summary, prioritized_insights = _build_executive_insight_summary(
+        working, validated_roles, business_insights, business_recommendations
+    )
+    st.subheader("Executive Summary & Prioritized Insights")
+    st.caption(
+        "A concise, evidence-linked overview generated from validated dataset fields and transparent rules. "
+        "Priority labels are review guidance, not a substitute for business judgement."
+    )
+    with st.container(border=True):
+        st.markdown("**Executive overview**")
+        st.write(executive_summary)
+    if not prioritized_insights.empty:
+        st.dataframe(prioritized_insights, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download Prioritized Insights (CSV)",
+            data=_cached_csv_export(prioritized_insights),
+            file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_prioritized_insights.csv",
+            mime="text/csv",
+            key=f"prioritized_insights_download_{_clean_name(base_name)}"
+        )
+    else:
+        st.info("No automated insight rules were triggered for the selected data.")
+
     st.subheader("Automated Business Insights")
     st.caption(
         "Observations are calculated from detected fields in the selected table. "
@@ -1736,7 +1852,6 @@ def _render_adaptive_workspace(tables):
         "Recommendations use transparent rules and validated columns in this dataset. "
         "They are prompts for investigation, not causal conclusions or guaranteed predictions."
     )
-    business_recommendations = _generate_business_recommendations(working, validated_roles)
     for priority, heading, detail in business_recommendations:
         with st.container(border=True):
             p1, p2 = st.columns([1, 5])
