@@ -379,6 +379,53 @@ with st.sidebar.expander("Uploaded file details", expanded=False):
         st.caption(f"{len(table_frame):,} rows · {len(table_frame.columns):,} columns")
     st.caption(f"Total columns across uploaded tables: {uploaded_table_columns:,}")
 
+# Batch 12: deployment and upload readiness checks.
+import platform
+import streamlit as _streamlit_package
+
+health_rows = []
+for health_name, health_frame in uploaded_data.items():
+    issues = []
+    if health_frame.empty:
+        issues.append("empty table")
+    duplicate_column_count = int(health_frame.columns.duplicated().sum())
+    if duplicate_column_count:
+        issues.append(f"{duplicate_column_count} duplicate column label(s)")
+    if len(health_frame.columns) == 0:
+        issues.append("no columns detected")
+    health_rows.append({
+        "Uploaded table": health_name,
+        "Rows": int(len(health_frame)),
+        "Columns": int(len(health_frame.columns)),
+        "Duplicate column labels": duplicate_column_count,
+        "Readiness": "Review" if issues else "Ready",
+        "Notes": "; ".join(issues) if issues else "Loaded successfully"
+    })
+
+health_report = pd.DataFrame(health_rows)
+with st.sidebar.expander("App & data readiness", expanded=False):
+    st.caption(f"Streamlit: {_streamlit_package.__version__}")
+    st.caption(f"Python: {platform.python_version()}")
+    st.caption(f"Pandas: {pd.__version__}")
+    if not health_report.empty:
+        ready_count = int((health_report["Readiness"] == "Ready").sum())
+        st.metric("Tables ready", f"{ready_count}/{len(health_report)}")
+        for _, health_row in health_report.iterrows():
+            if health_row["Readiness"] == "Ready":
+                st.success(f"{health_row['Uploaded table']}: ready")
+            else:
+                st.warning(f"{health_row['Uploaded table']}: {health_row['Notes']}")
+        st.download_button(
+            "Download Upload Health Report (CSV)",
+            data=health_report.to_csv(index=False),
+            file_name="retailiq_upload_health_report.csv",
+            mime="text/csv",
+            key="retailiq_upload_health_report_download"
+        )
+    else:
+        st.info("Upload a dataset to run readiness checks.")
+
+
 
 # ==========================================
 # ADAPTIVE DATA PROFILING & GENERIC ANALYTICS
