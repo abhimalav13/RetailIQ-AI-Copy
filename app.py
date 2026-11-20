@@ -1421,6 +1421,45 @@ def _render_adaptive_workspace(tables):
         f"({len(working) / max(1, unfiltered_rows) * 100:.1f}% retained)."
     )
 
+    # Batch 7: surface quality diagnostics and provide an optional, non-destructive
+    # duplicate-removal view for downstream analysis.
+    quality_profile = _profile_table(working)
+    quality_report = _build_data_quality_report(working, quality_profile)
+    total_cells = max(1, working.size)
+    missing_cells = int(working.isna().sum().sum())
+    duplicate_rows = int(working.duplicated().sum())
+    st.subheader("Data Quality Monitor")
+    quality_metrics = st.columns(4)
+    quality_metrics[0].metric("Rows", f"{len(working):,}")
+    quality_metrics[1].metric("Columns", f"{len(working.columns):,}")
+    quality_metrics[2].metric("Missing cells", f"{missing_cells:,}",
+                              f"{missing_cells / total_cells * 100:.1f}% of all cells")
+    quality_metrics[3].metric("Duplicate rows", f"{duplicate_rows:,}")
+    with st.expander("Column-level quality diagnostics", expanded=False):
+        st.dataframe(quality_report, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download Data Quality Report (CSV)",
+            data=_cached_csv_export(quality_report),
+            file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_data_quality_report.csv",
+            mime="text/csv",
+            key=f"adaptive_quality_report_download_{_clean_name(base_name)}"
+        )
+
+    if duplicate_rows:
+        remove_duplicates_for_analysis = st.checkbox(
+            f"Exclude {duplicate_rows:,} exact duplicate rows from this analysis view",
+            value=False,
+            key=f"adaptive_remove_duplicates_{_clean_name(base_name)}"
+        )
+        if remove_duplicates_for_analysis:
+            before_dedup = len(working)
+            working = working.drop_duplicates().copy()
+            st.info(
+                f"Analysis view now contains {len(working):,} rows "
+                f"({before_dedup - len(working):,} duplicates excluded). "
+                "The uploaded source data has not been changed."
+            )
+
     profile = _profile_table(working)
     date_options, numeric_options, category_options = profile["dates"], profile["numeric"], profile["categorical"]
     domain = _domain_summary(working)
