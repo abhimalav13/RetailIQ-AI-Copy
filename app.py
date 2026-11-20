@@ -465,6 +465,87 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
+def _generate_business_insights(frame, roles):
+    """Generate deterministic observations only when supporting columns/data exist."""
+    insights = []
+    measure_col = roles.get("Revenue / Sales") or roles.get("Quantity / Units")
+    category_col = roles.get("Category") or roles.get("Product") or roles.get("Geography")
+    date_col = roles.get("Date / Timestamp")
+    status_col = roles.get("Status")
+    rating_col = roles.get("Rating / Review")
+
+    if measure_col:
+        values = pd.to_numeric(frame[measure_col], errors="coerce")
+        valid = values.dropna()
+        if not valid.empty:
+            insights.append(
+                ("Measure summary",
+                 f"{measure_col} totals {valid.sum():,.2f} across {len(valid):,} valid records; "
+                 f"the average per record is {valid.mean():,.2f}.")
+            )
+            if category_col:
+                temp = pd.DataFrame({
+                    "category": frame[category_col].astype("string"),
+                    "value": values
+                }).dropna()
+                grouped = temp.groupby("category")["value"].sum().sort_values(ascending=False)
+                if not grouped.empty:
+                    top_name, top_value = str(grouped.index[0]), float(grouped.iloc[0])
+                    share = top_value / grouped.sum() * 100 if grouped.sum() else None
+                    share_text = f" ({share:.1f}% of the grouped total)" if share is not None else ""
+                    insights.append(
+                        ("Top contributing group",
+                         f"{top_name} has the highest total {measure_col}: {top_value:,.2f}{share_text}.")
+                    )
+                    if len(grouped) >= 2:
+                        low_name, low_value = str(grouped.index[-1]), float(grouped.iloc[-1])
+                        insights.append(
+                            ("Lowest contributing group",
+                             f"{low_name} has the lowest total among the displayed groups: {low_value:,.2f}.")
+                        )
+
+            if date_col:
+                dates = pd.to_datetime(frame[date_col], errors="coerce")
+                trend_data = pd.DataFrame({"date": dates, "value": values}).dropna()
+                if not trend_data.empty:
+                    monthly = trend_data.set_index("date")["value"].resample("MS").sum()
+                    monthly = monthly[monthly.notna()]
+                    if len(monthly) >= 2:
+                        first, last = float(monthly.iloc[0]), float(monthly.iloc[-1])
+                        if first != 0:
+                            change = (last - first) / abs(first) * 100
+                            direction = "increased" if change > 0 else "decreased" if change < 0 else "remained unchanged"
+                            insights.append(
+                                ("Monthly movement",
+                                 f"Monthly {measure_col} {direction} by {abs(change):.1f}% "
+                                 f"between {monthly.index[0].strftime('%b %Y')} and "
+                                 f"{monthly.index[-1].strftime('%b %Y')}.")
+                            )
+                        else:
+                            insights.append(
+                                ("Monthly movement",
+                                 f"The first month has a zero total, so a percentage change cannot be calculated. "
+                                 f"The latest month total is {last:,.2f}.")
+                            )
+
+    if status_col:
+        counts = frame[status_col].fillna("Missing").astype(str).value_counts()
+        if len(counts):
+            label, count = counts.index[0], int(counts.iloc[0])
+            insights.append(
+                ("Most common status",
+                 f"{label} is the most frequent {status_col} value ({count:,} records).")
+            )
+    if rating_col:
+        ratings = pd.to_numeric(frame[rating_col], errors="coerce").dropna()
+        if not ratings.empty:
+            insights.append(
+                ("Customer rating",
+                 f"Average {rating_col} is {ratings.mean():.2f} across {len(ratings):,} valid ratings.")
+            )
+    return insights
+
+
 def _build_data_quality_report(frame, profile):
     """Create non-destructive data-quality diagnostics; never alter source rows."""
     rows = []
@@ -800,6 +881,25 @@ def _render_adaptive_workspace(tables):
     st.dataframe(semantic_mapping, use_container_width=True, hide_index=True)
     validated_roles = _validated_role_columns(working)
     _render_semantic_kpis(working, validated_roles, key_prefix=_clean_name(base_name))
+
+    business_insights = _generate_business_insights(working, validated_roles)
+    st.subheader("Automated Business Insights")
+    st.caption(
+        "Observations are calculated from detected fields in the selected table. "
+        "They describe the uploaded data and do not establish causation."
+    )
+    if business_insights:
+        for idx in range(0, len(business_insights), 2):
+            insight_cols = st.columns(2)
+            for col, (heading, detail) in zip(insight_cols, business_insights[idx:idx + 2]):
+                with col:
+                    st.markdown(f"**{heading}**")
+                    st.write(detail)
+    else:
+        st.info(
+            "There are not enough high-confidence business fields to generate automated insights. "
+            "Review the suggested column mapping or use the manual explorer."
+        )
 
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
