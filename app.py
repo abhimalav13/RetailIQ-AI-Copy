@@ -1017,6 +1017,17 @@ def _render_adaptive_workspace(tables):
         report_lines.extend([f"{role}: {column}" for role, column in validated_roles.items()])
     else:
         report_lines.append("No high-confidence semantic mappings were available.")
+    report_lines.extend([
+        "",
+        "COLUMN-LEVEL DATA QUALITY",
+        "-" * 26,
+        "Column | Detected type | Missing values | Unique values",
+    ])
+    for row in profile_rows:
+        report_lines.append(
+            f"{row['Column']} | {row['Detected type']} | "
+            f"{row['Missing']:,} | {row['Unique values']:,}"
+        )
     report_lines.extend(["", "AUTOMATED BUSINESS INSIGHTS", "-" * 28])
     if business_insights:
         for heading, detail in business_insights:
