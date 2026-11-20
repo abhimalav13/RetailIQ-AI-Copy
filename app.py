@@ -270,8 +270,9 @@ try:
     uploaded_data = {}
     for file in uploaded_files:
         base_name = os.path.splitext(file.name)[0]
+        file_bytes = file.getvalue()
         uploaded_data[normalize_column(base_name)] = load_data(
-            file.getvalue(), file.name
+            file_bytes, file.name
         )
 except Exception as e:
     st.error(f"Unable to read one of the uploaded files: {e}")
@@ -284,6 +285,48 @@ except Exception as e:
 # ==========================================
 
 import re
+
+
+@st.cache_data(show_spinner=False)
+def _cached_csv_export(frame):
+    """Cache CSV serialization for unchanged analysis tables."""
+    return frame.to_csv(index=False)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_visual_sample(frame, columns, sample_size=50000):
+    """Return a deterministic sample for charts when datasets are very large."""
+    selected = frame.loc[:, list(columns)]
+    if len(selected) <= sample_size:
+        return selected.copy()
+    return selected.sample(n=sample_size, random_state=42)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_numeric_correlation(frame, columns, sample_size=50000):
+    """Calculate correlation on all rows for small data and a stable sample for large data."""
+    sample = _cached_visual_sample(frame, list(columns), sample_size)
+    numeric = sample.apply(pd.to_numeric, errors="coerce")
+    return numeric.corr()
+
+
+@st.cache_data(show_spinner=False)
+def _cached_monthly_trend(frame, date_col, measure, aggregation):
+    """Aggregate the full dataset to monthly values and cache the result."""
+    temp = frame[[date_col, measure]].copy()
+    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+    temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
+    temp = temp.dropna()
+    if temp.empty:
+        return pd.DataFrame(columns=[date_col, measure])
+    grouped_series = temp.set_index(date_col)[measure].resample("MS")
+    if aggregation == "Sum":
+        result = grouped_series.sum()
+    elif aggregation == "Average":
+        result = grouped_series.mean()
+    else:
+        result = grouped_series.count()
+    return result.reset_index(name=measure)
 
 def _clean_name(value):
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
@@ -319,6 +362,7 @@ def _is_flag_name(column):
     return any(_clean_name(token) in name for token in flag_tokens)
 
 
+@st.cache_data(show_spinner=False)
 def _profile_table(frame):
     profile = {
         "rows": len(frame), "columns": len(frame.columns), "numeric": [],
@@ -388,6 +432,7 @@ def _find_column(frame, aliases):
     return None
 
 
+@st.cache_data(show_spinner=False)
 def _semantic_column_mapping(frame):
     """Suggest business roles from common column-name synonyms, with type checks."""
     role_aliases = {
@@ -465,6 +510,7 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
+@st.cache_data(show_spinner=False)
 def _generate_business_insights(frame, roles):
     """Generate deterministic observations only when supporting columns/data exist."""
     insights = []
@@ -547,6 +593,7 @@ def _generate_business_insights(frame, roles):
 
 
 
+@st.cache_data(show_spinner=False)
 def _generate_business_recommendations(frame, roles):
     """Create transparent, rule-based actions from validated business roles."""
     recommendations = []
@@ -620,6 +667,7 @@ def _generate_business_recommendations(frame, roles):
             "No strong rule-based action was triggered by the detected fields. Review the column mapping and collect enough date, category and outcome data to support deeper analysis."))
     return recommendations
 
+@st.cache_data(show_spinner=False)
 def _build_data_quality_report(frame, profile):
     """Create non-destructive data-quality diagnostics; never alter source rows."""
     rows = []
@@ -658,6 +706,7 @@ def _build_data_quality_report(frame, profile):
     return pd.DataFrame(rows)
 
 
+@st.cache_data(show_spinner=False)
 def _recommend_chart_types(frame, profile, roles):
     """Recommend chart forms from detected field roles and cardinality."""
     recommendations = []
@@ -744,6 +793,7 @@ def _truthy_mask(series):
     return text.isin({"1", "yes", "y", "true", "left", "exited", "churned", "late", "delayed"})
 
 
+@st.cache_data(show_spinner=False)
 def _domain_summary(frame):
     cols = {_clean_name(c): c for c in frame.columns}
     has = lambda *names: any(_clean_name(n) in cols for n in names)
@@ -765,6 +815,7 @@ def _domain_summary(frame):
     return "General Dataset Analytics"
 
 
+@st.cache_data(show_spinner=False)
 def _detect_dataset_features(frame):
     """Identify which business analyses are supported by the columns actually uploaded."""
     aliases = {
@@ -1079,7 +1130,7 @@ def _render_adaptive_workspace(tables):
             "Unique values": int(row["Unique values"]),
             "Suggested business role": "; ".join(role_lookup.get(row["Column"], [])) or "Not detected",
         })
-    dictionary_csv = pd.DataFrame(dictionary_rows).to_csv(index=False)
+    dictionary_csv = _cached_csv_export(pd.DataFrame(dictionary_rows))
     dictionary_filename = f"{_clean_name(str(base_name)) or 'retailiq'}_data_dictionary.csv"
     st.download_button(
         "Download Data Dictionary (CSV)",
@@ -1096,7 +1147,7 @@ def _render_adaptive_workspace(tables):
         "If you applied table joins, the export includes the joined result. "
         "Source values are not automatically cleaned or changed."
     )
-    export_csv = working.to_csv(index=False)
+    export_csv = _cached_csv_export(working)
     export_filename = f"{_clean_name(str(base_name)) or 'retailiq'}_analysis_dataset.csv"
     st.download_button(
         "Download Analysis Dataset (CSV)",
@@ -1248,14 +1299,8 @@ def _render_adaptive_workspace(tables):
                 trend_agg = st.selectbox("Time trend aggregation", ["Sum", "Average", "Record count"],
                                          index=1 if any(t in _clean_name(measure) for t in ["days", "duration", "age", "score", "rate"]) else 0,
                                          key=f"adaptive_time_agg_{_clean_name(base_name)}")
-                temp = working[[date_col, measure]].copy()
-                temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-                temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
-                temp = temp.dropna()
-                if not temp.empty:
-                    grouped_series = temp.set_index(date_col)[measure].resample("MS")
-                    trend = (grouped_series.sum() if trend_agg == "Sum" else
-                             grouped_series.mean() if trend_agg == "Average" else grouped_series.count()).reset_index(name=measure)
+                trend = _cached_monthly_trend(working, date_col, measure, trend_agg)
+                if not trend.empty:
                     st.plotly_chart(px.line(trend, x=date_col, y=measure, markers=True,
                                             title=f"{trend_agg} {measure} by month", template="plotly_white"),
                                     use_container_width=True, key=f"adaptive_trend_{_clean_name(base_name)}")
@@ -1305,18 +1350,23 @@ def _render_adaptive_workspace(tables):
                                     use_container_width=True, key=f"adaptive_category_pie_{_clean_name(base_name)}")
 
         if measure:
-            st.plotly_chart(px.histogram(working, x=measure, nbins=30,
+            histogram_data = _cached_visual_sample(working, [measure])
+            st.plotly_chart(px.histogram(histogram_data, x=measure, nbins=30,
                                          title=f"Distribution of {measure}", template="plotly_white"),
                             use_container_width=True, key=f"adaptive_hist_{_clean_name(base_name)}")
+            if len(working) > 50000:
+                st.caption("For responsiveness, this histogram uses a reproducible 50,000-row sample. KPIs and other full-data calculations still use all rows.")
 
         corr_fields = numeric_options[:15]
         if len(corr_fields) >= 2:
-            corr = working[corr_fields].apply(pd.to_numeric, errors="coerce").corr()
+            corr = _cached_numeric_correlation(working, corr_fields)
             if corr.shape[0] >= 2:
                 st.plotly_chart(px.imshow(corr, text_auto=".2f", aspect="auto",
                                           title="Correlation between numeric measures",
                                           color_continuous_scale="RdBu", zmin=-1, zmax=1),
                                 use_container_width=True, key=f"adaptive_corr_{_clean_name(base_name)}")
+                if len(working) > 50000:
+                    st.caption("Correlation is calculated on a reproducible 50,000-row sample for faster rendering.")
 
         if not date_options and not category_options and not numeric_options:
             st.info("No chart is displayed because the data does not support a meaningful visual.")
@@ -1335,7 +1385,7 @@ def _render_adaptive_workspace(tables):
 
     with tabs[2]:
         st.dataframe(working.head(500), use_container_width=True)
-        st.download_button("Download analysed table", data=working.to_csv(index=False).encode("utf-8"),
+        st.download_button("Download analysed table", data=_cached_csv_export(working).encode("utf-8"),
                            file_name="retailiq_analysed_data.csv", mime="text/csv")
 
 
