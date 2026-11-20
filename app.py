@@ -268,6 +268,351 @@ except Exception as e:
     st.stop()
 
 
+
+# ==========================================
+# ADAPTIVE DATA PROFILING & GENERIC ANALYTICS
+# ==========================================
+
+import re
+
+def _clean_name(value):
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _is_identifier_name(column):
+    name = _clean_name(column)
+    identifier_tokens = (
+        "id", "code", "sku", "uuid", "key", "zipcode", "postalcode",
+        "phonenumber", "invoice", "ordernumber", "transactionnumber"
+    )
+    return any(token in name for token in identifier_tokens)
+
+
+def _profile_table(frame):
+    profile = {
+        "rows": len(frame),
+        "columns": len(frame.columns),
+        "numeric": [],
+        "dates": [],
+        "categorical": [],
+        "identifiers": [],
+        "missing": {}
+    }
+    for col in frame.columns:
+        series = frame[col]
+        profile["missing"][col] = int(series.isna().sum())
+
+        if pd.api.types.is_datetime64_any_dtype(series):
+            profile["dates"].append(col)
+            continue
+
+        name = _clean_name(col)
+        date_name = any(token in name for token in (
+            "date", "time", "timestamp", "created", "updated", "month", "year"
+        ))
+        if date_name and not pd.api.types.is_numeric_dtype(series):
+            parsed = pd.to_datetime(series, errors="coerce")
+            if len(series.dropna()) and parsed.notna().mean() >= 0.65:
+                profile["dates"].append(col)
+                continue
+
+        converted = pd.to_numeric(series, errors="coerce")
+        numeric_ratio = converted.notna().mean() if len(series) else 0
+        if pd.api.types.is_numeric_dtype(series) or numeric_ratio >= 0.85:
+            if _is_identifier_name(col):
+                profile["identifiers"].append(col)
+            else:
+                profile["numeric"].append(col)
+        elif series.nunique(dropna=True) <= max(50, int(len(series) * 0.20)):
+            profile["categorical"].append(col)
+        elif _is_identifier_name(col):
+            profile["identifiers"].append(col)
+
+    return profile
+
+
+def _retail_schema_is_compatible(frame):
+    aliases = {
+        "order": {"invoiceno", "invoice", "invoiceid", "orderid", "ordernumber", "transactionid"},
+        "product": {"stockcode", "productid", "productcode", "sku", "itemcode"},
+        "date": {"invoicedate", "orderdate", "transactiondate", "date", "orderpurchasetimestamp"},
+        "quantity": {"quantity", "qty", "unitssold", "numberofitems"},
+        "price": {"unitprice", "sellingprice", "priceperunit", "price"},
+    }
+    normalized = {_clean_name(c) for c in frame.columns}
+    return all(bool(normalized & values) for values in aliases.values())
+
+
+def _render_adaptive_workspace(tables):
+    """Generic, evidence-led analytics for non-legacy and multi-table uploads."""
+    st.title("RetailIQ AI")
+    st.subheader("Adaptive Analytics & Data Explorer")
+    st.caption(
+        "This dataset does not match the original Online Retail transaction schema. "
+        "RetailIQ is profiling the actual columns and will only create analyses supported by the data."
+    )
+
+    st.success("Adaptive mode enabled — the original Online Retail dashboard logic has not been applied.")
+
+    table_names = list(tables.keys())
+    if not table_names:
+        st.error("No readable tables were found.")
+        return
+
+    # Show a compact inventory of all uploaded tables.
+    inventory = pd.DataFrame([
+        {"Table": name, "Rows": len(tables[name]), "Columns": len(tables[name].columns)}
+        for name in table_names
+    ])
+    with st.expander("Uploaded data inventory", expanded=len(table_names) > 1):
+        st.dataframe(inventory, use_container_width=True, hide_index=True)
+
+    working = None
+    base_name = None
+
+    if len(table_names) == 1:
+        base_name = table_names[0]
+        working = tables[base_name].copy()
+    else:
+        st.subheader("Choose a primary table")
+        default_base = max(table_names, key=lambda n: len(tables[n]))
+        base_name = st.selectbox(
+            "Primary table for analysis",
+            table_names,
+            index=table_names.index(default_base),
+            key="adaptive_primary_table"
+        )
+        working = tables[base_name].copy()
+
+        st.subheader("Optional table relationships")
+        st.caption(
+            "Choose matching key columns only when they represent the same entity. "
+            "Review row counts after each join; many-to-many joins can multiply records."
+        )
+        for idx, other_name in enumerate([n for n in table_names if n != base_name]):
+            other = tables[other_name]
+            with st.expander(f"Join {other_name}", expanded=False):
+                common = [c for c in working.columns if c in other.columns]
+                left_key_options = list(working.columns)
+                right_key_options = list(other.columns)
+                include = st.checkbox(
+                    f"Include {other_name}",
+                    value=False,
+                    key=f"adaptive_join_include_{idx}"
+                )
+                if not include:
+                    st.caption(
+                        f"Potential common columns: {', '.join(common[:8]) if common else 'None detected'}"
+                    )
+                    continue
+
+                suggested_left = common[0] if common else left_key_options[0]
+                suggested_right = suggested_left if suggested_left in right_key_options else right_key_options[0]
+                c1, c2 = st.columns(2)
+                left_key = c1.selectbox(
+                    "Primary-table key",
+                    left_key_options,
+                    index=left_key_options.index(suggested_left),
+                    key=f"adaptive_left_key_{idx}"
+                )
+                right_key = c2.selectbox(
+                    "Related-table key",
+                    right_key_options,
+                    index=right_key_options.index(suggested_right),
+                    key=f"adaptive_right_key_{idx}"
+                )
+                join_how = st.selectbox(
+                    "Join type",
+                    ["left", "inner", "outer"],
+                    key=f"adaptive_join_how_{idx}"
+                )
+                if working[left_key].duplicated().any() and other[right_key].duplicated().any():
+                    st.warning(
+                        "Both selected keys contain duplicates. This is a many-to-many join "
+                        "and may multiply rows. Confirm that this relationship is intended."
+                    )
+                if st.button(f"Apply join: {other_name}", key=f"adaptive_apply_join_{idx}"):
+                    try:
+                        working = working.merge(
+                            other,
+                            left_on=left_key,
+                            right_on=right_key,
+                            how=join_how,
+                            suffixes=("", f"_{_clean_name(other_name)[:12]}")
+                        )
+                        st.session_state["adaptive_joined_frame"] = working
+                        st.session_state["adaptive_joined_base"] = base_name
+                        st.success(
+                            f"Join applied. Result: {len(working):,} rows and {len(working.columns):,} columns."
+                        )
+                    except Exception as exc:
+                        st.error(f"Join could not be completed: {exc}")
+                    st.rerun()
+
+        if (
+            st.session_state.get("adaptive_joined_base") == base_name
+            and "adaptive_joined_frame" in st.session_state
+        ):
+            working = st.session_state["adaptive_joined_frame"].copy()
+
+    if working is None or working.empty:
+        st.warning("The selected table is empty.")
+        return
+
+    # Normalize obvious date and numeric columns for analysis without changing source columns.
+    profile = _profile_table(working)
+    date_options = profile["dates"]
+    numeric_options = profile["numeric"]
+    category_options = profile["categorical"]
+
+    st.subheader("Data quality and structure")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Records", f"{len(working):,}")
+    k2.metric("Columns", f"{len(working.columns):,}")
+    k3.metric("Numeric measures", f"{len(numeric_options):,}")
+    k4.metric("Date fields", f"{len(date_options):,}")
+
+    profile_rows = []
+    for col in working.columns:
+        profile_rows.append({
+            "Column": str(col),
+            "Detected type": (
+                "Date" if col in profile["dates"] else
+                "Numeric measure" if col in profile["numeric"] else
+                "Identifier" if col in profile["identifiers"] else
+                "Category / text"
+            ),
+            "Missing": profile["missing"][col],
+            "Unique values": int(working[col].nunique(dropna=True))
+        })
+    st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+
+    if not numeric_options and not category_options and not date_options:
+        st.info("The uploaded table has no suitable numeric, date, or categorical fields for charts.")
+        st.subheader("Data preview")
+        st.dataframe(working.head(100), use_container_width=True)
+        return
+
+    st.subheader("Adaptive overview")
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Total records", f"{len(working):,}")
+    metric_cols[1].metric("Distinct categories", f"{sum(working[c].nunique(dropna=True) for c in category_options):,}")
+    metric_cols[2].metric("Numeric fields", f"{len(numeric_options):,}")
+    metric_cols[3].metric("Missing cells", f"{int(working.isna().sum().sum()):,}")
+
+    # A numeric field is selected by the user from detected measures; no revenue/profit
+    # label is invented when the uploaded data does not contain one.
+    if numeric_options:
+        measure = st.selectbox(
+            "Choose a numeric measure to analyse",
+            numeric_options,
+            key="adaptive_measure"
+        )
+        measure_values = pd.to_numeric(working[measure], errors="coerce").dropna()
+        m1, m2, m3 = st.columns(3)
+        m1.metric(f"Total {measure}", f"{measure_values.sum():,.2f}")
+        m2.metric(f"Average {measure}", f"{measure_values.mean():,.2f}" if len(measure_values) else "—")
+        m3.metric(f"Median {measure}", f"{measure_values.median():,.2f}" if len(measure_values) else "—")
+    else:
+        measure = None
+        st.info("No numeric measure was detected. Numeric KPIs and measure-based charts are hidden.")
+
+    tabs = st.tabs(["Visual analysis", "Relationships", "Data preview"])
+
+    with tabs[0]:
+        if date_options and measure:
+            date_col = st.selectbox("Date field", date_options, key="adaptive_date")
+            temp = working[[date_col, measure]].copy()
+            temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+            temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
+            temp = temp.dropna()
+            if not temp.empty:
+                trend = temp.set_index(date_col).resample("MS")[measure].sum().reset_index()
+                st.plotly_chart(
+                    px.line(trend, x=date_col, y=measure, markers=True,
+                            title=f"{measure} over time", template="plotly_white"),
+                    use_container_width=True
+                )
+            else:
+                st.caption("The selected date and measure fields do not contain enough valid paired values.")
+
+        if category_options and measure:
+            category_col = st.selectbox(
+                "Category field",
+                category_options,
+                key="adaptive_category"
+            )
+            limit = st.slider("Number of categories to display", 5, 25, 10, key="adaptive_category_limit")
+            temp = working[[category_col, measure]].copy()
+            temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
+            grouped = (
+                temp.dropna(subset=[category_col, measure])
+                .groupby(category_col, dropna=False)[measure]
+                .sum()
+                .sort_values(ascending=False)
+                .head(limit)
+                .reset_index()
+            )
+            if not grouped.empty:
+                st.plotly_chart(
+                    px.bar(grouped, x=category_col, y=measure, title=f"{measure} by {category_col}",
+                           template="plotly_white"),
+                    use_container_width=True
+                )
+                if 2 <= len(grouped) <= 8:
+                    st.plotly_chart(
+                        px.pie(grouped, names=category_col, values=measure, hole=0.5,
+                               title=f"{measure} share by {category_col}"),
+                        use_container_width=True
+                    )
+
+        if measure:
+            st.plotly_chart(
+                px.histogram(
+                    working,
+                    x=measure,
+                    nbins=30,
+                    title=f"Distribution of {measure}",
+                    template="plotly_white"
+                ),
+                use_container_width=True
+            )
+
+        if len(numeric_options) >= 2:
+            corr = working[numeric_options].apply(pd.to_numeric, errors="coerce").corr()
+            if corr.shape[0] >= 2:
+                st.plotly_chart(
+                    px.imshow(corr, text_auto=".2f", aspect="auto",
+                              title="Correlation between numeric measures",
+                              color_continuous_scale="RdBu", zmin=-1, zmax=1),
+                    use_container_width=True
+                )
+
+        if not date_options and not category_options and not numeric_options:
+            st.info("No chart is displayed because the data does not support a meaningful visual.")
+
+    with tabs[1]:
+        st.caption("Detected potential join keys and identifier fields.")
+        if profile["identifiers"]:
+            st.write("Identifier fields:", ", ".join(map(str, profile["identifiers"])))
+        else:
+            st.info("No obvious identifier fields were detected in this table.")
+        if len(table_names) > 1:
+            st.write("Uploaded tables:", ", ".join(table_names))
+            st.info("Use the optional table-join controls above. Verify key meaning and row counts before relying on joined metrics.")
+        else:
+            st.info("Upload related tables together to explore possible relationships.")
+
+    with tabs[2]:
+        st.dataframe(working.head(500), use_container_width=True)
+        st.download_button(
+            "Download analysed table",
+            data=working.to_csv(index=False).encode("utf-8"),
+            file_name="retailiq_analysed_data.csv",
+            mime="text/csv"
+        )
+
+
 # Detect Olist multi-table upload by its characteristic file names.
 olist_orders = find_uploaded_file(uploaded_data, "olist_orders_dataset")
 olist_items = find_uploaded_file(uploaded_data, "olist_order_items_dataset")
@@ -283,6 +628,17 @@ is_olist_upload = any([
     olist_products is not None,
     olist_customers is not None
 ])
+
+# Keep the original retail transaction dashboard unchanged for compatible
+# single-file transaction datasets, and keep the existing Olist path.
+# Other schemas use the adaptive analytics workspace instead of being forced
+# into Online Retail's InvoiceNo/StockCode/Quantity/UnitPrice assumptions.
+if not is_olist_upload and (
+    len(uploaded_files) > 1
+    or not _retail_schema_is_compatible(next(iter(uploaded_data.values())))
+):
+    _render_adaptive_workspace(uploaded_data)
+    st.stop()
 
 if is_olist_upload:
     missing_olist = []
@@ -726,59 +1082,60 @@ if page == "Business Overview":
     )
 
     # ==========================================
-    # COUNTRY REVENUE DONUT
+    # COUNTRY REVENUE DONUT — DATA-DRIVEN VISIBILITY
     # ==========================================
 
-    st.subheader("Revenue Distribution by Country")
+    if countries["Country"].nunique() > 1:
+        st.subheader("Revenue Distribution by Country")
 
-    country_chart = countries.head(8).copy()
+        country_chart = countries.head(8).copy()
 
-    if len(countries) > 8:
+        if len(countries) > 8:
+            other_revenue = countries.iloc[8:]["Revenue"].sum()
+            country_chart = pd.concat(
+                [
+                    country_chart,
+                    pd.DataFrame({
+                        "Country": ["Other Countries"],
+                        "Revenue": [other_revenue]
+                    })
+                ],
+                ignore_index=True
+            )
 
-        other_revenue = countries.iloc[8:]["Revenue"].sum()
-
-        country_chart = pd.concat(
-            [
-                country_chart,
-                pd.DataFrame({
-                    "Country": ["Other Countries"],
-                    "Revenue": [other_revenue]
-                })
-            ],
-            ignore_index=True
+        fig_donut = px.pie(
+            country_chart,
+            names="Country",
+            values="Revenue",
+            hole=0.58,
+            color_discrete_sequence=chart_colors
         )
 
-    fig_donut = px.pie(
-        country_chart,
-        names="Country",
-        values="Revenue",
-        hole=0.58,
-        color_discrete_sequence=chart_colors
-    )
-
-    fig_donut.update_traces(
-        textposition="inside",
-        textinfo="percent",
-        hovertemplate=(
-            "Country: %{label}<br>"
-            f"Revenue: {currency_symbol}%{{value:,.2f}}"
-            "<br>Share: %{percent}"
-            "<extra></extra>"
+        fig_donut.update_traces(
+            textposition="inside",
+            textinfo="percent",
+            hovertemplate=(
+                "Country: %{label}<br>"
+                f"Revenue: {currency_symbol}%{{value:,.2f}}"
+                "<br>Share: %{percent}"
+                "<extra></extra>"
+            )
         )
-    )
 
-    fig_donut.update_layout(
-        title="Country-wise Revenue Share",
-        title_font_color=navy,
-        font=dict(color=navy),
-        legend_title="Markets",
-        paper_bgcolor="white"
-    )
+        fig_donut.update_layout(
+            title="Country-wise Revenue Share",
+            title_font_color=navy,
+            font=dict(color=navy),
+            legend_title="Markets",
+            paper_bgcolor="white"
+        )
 
-    st.plotly_chart(
-        fig_donut,
-        use_container_width=True
-    )
+        st.plotly_chart(fig_donut, use_container_width=True)
+    else:
+        st.caption(
+            "Country-share chart hidden: only one country is present, "
+            "so a country comparison would not add useful information."
+        )
 
     # ==========================================
     # DAILY SALES TREND
@@ -941,108 +1298,115 @@ if page == "Business Overview":
     # ==========================================
     # GLOBAL SALES MAP
     # ==========================================
+    if countries["Country"].nunique() > 1:
+        st.subheader("Global Sales Map")
 
-    st.subheader("Global Sales Map")
+        # Convert country names into standard ISO-3 codes
+        country_iso3 = {
+            "United Kingdom": "GBR",
+            "Netherlands": "NLD",
+            "EIRE": "IRL",
+            "Germany": "DEU",
+            "France": "FRA",
+            "Australia": "AUS",
+            "Spain": "ESP",
+            "Switzerland": "CHE",
+            "Belgium": "BEL",
+            "Sweden": "SWE",
+            "Italy": "ITA",
+            "Portugal": "PRT",
+            "Norway": "NOR",
+            "Finland": "FIN",
+            "Denmark": "DNK",
+            "Austria": "AUT",
+            "Cyprus": "CYP",
+            "Greece": "GRC",
+            "Poland": "POL",
+            "Japan": "JPN",
+            "Singapore": "SGP",
+            "Hong Kong": "HKG",
+            "USA": "USA",
+            "Canada": "CAN",
+            "Brazil": "BRA",
+            "Israel": "ISR",
+            "Iceland": "ISL",
+            "Bahrain": "BHR",
+            "Lebanon": "LBN",
+            "Lithuania": "LTU",
+            "Malta": "MLT",
+            "Saudi Arabia": "SAU",
+            "United Arab Emirates": "ARE",
+            "Czech Republic": "CZE",
+            "RSA": "ZAF"
+        }
 
-    # Convert country names into standard ISO-3 codes
-    country_iso3 = {
-        "United Kingdom": "GBR",
-        "Netherlands": "NLD",
-        "EIRE": "IRL",
-        "Germany": "DEU",
-        "France": "FRA",
-        "Australia": "AUS",
-        "Spain": "ESP",
-        "Switzerland": "CHE",
-        "Belgium": "BEL",
-        "Sweden": "SWE",
-        "Italy": "ITA",
-        "Portugal": "PRT",
-        "Norway": "NOR",
-        "Finland": "FIN",
-        "Denmark": "DNK",
-        "Austria": "AUT",
-        "Cyprus": "CYP",
-        "Greece": "GRC",
-        "Poland": "POL",
-        "Japan": "JPN",
-        "Singapore": "SGP",
-        "Hong Kong": "HKG",
-        "USA": "USA",
-        "Canada": "CAN",
-        "Brazil": "BRA",
-        "Israel": "ISR",
-        "Iceland": "ISL",
-        "Bahrain": "BHR",
-        "Lebanon": "LBN",
-        "Lithuania": "LTU",
-        "Malta": "MLT",
-        "Saudi Arabia": "SAU",
-        "United Arab Emirates": "ARE",
-        "Czech Republic": "CZE",
-        "RSA": "ZAF"
-    }
+        map_countries = countries.copy()
 
-    map_countries = countries.copy()
-
-    map_countries["ISO3"] = (
-        map_countries["Country"].map(country_iso3)
-    )
-
-    map_countries = map_countries.dropna(
-        subset=["ISO3"]
-    )
-
-    if not map_countries.empty:
-
-        fig_map = px.choropleth(
-            map_countries,
-            locations="ISO3",
-            locationmode="ISO-3",
-            color="Revenue",
-            hover_name="Country",
-            color_continuous_scale=[
-                "#DCE6F1",
-                "#14B8A6",
-                "#14213D"
-            ],
-            template="plotly_white"
+        map_countries["ISO3"] = (
+            map_countries["Country"].map(country_iso3)
         )
 
-        fig_map.update_geos(
-            fitbounds="locations",
-            visible=True,
-            showcountries=True,
-            showcoastlines=True,
-            showland=True,
-            landcolor="#E2E8F0",
-            bgcolor="white"
+        map_countries = map_countries.dropna(
+            subset=["ISO3"]
         )
 
-        fig_map.update_layout(
-            title="Worldwide Revenue Distribution",
-            coloraxis_colorbar=dict(
-                title=f"Revenue ({selected_currency})"
-            ),
-            paper_bgcolor="white",
-            font=dict(color="#14213D")
-        )
+        if not map_countries.empty:
 
-        fig_map.update_traces(
-            hovertemplate=(
-                "Country: %{hovertext}<br>"
-                f"Revenue: {currency_symbol}%{{z:,.2f}}"
-                "<extra></extra>"
+            fig_map = px.choropleth(
+                map_countries,
+                locations="ISO3",
+                locationmode="ISO-3",
+                color="Revenue",
+                hover_name="Country",
+                color_continuous_scale=[
+                    "#DCE6F1",
+                    "#14B8A6",
+                    "#14213D"
+                ],
+                template="plotly_white"
             )
-        )
 
-        st.plotly_chart(
-            fig_map,
-            use_container_width=True
-        )
+            fig_map.update_geos(
+                fitbounds="locations",
+                visible=True,
+                showcountries=True,
+                showcoastlines=True,
+                showland=True,
+                landcolor="#E2E8F0",
+                bgcolor="white"
+            )
+
+            fig_map.update_layout(
+                title="Worldwide Revenue Distribution",
+                coloraxis_colorbar=dict(
+                    title=f"Revenue ({selected_currency})"
+                ),
+                paper_bgcolor="white",
+                font=dict(color="#14213D")
+            )
+
+            fig_map.update_traces(
+                hovertemplate=(
+                    "Country: %{hovertext}<br>"
+                    f"Revenue: {currency_symbol}%{{z:,.2f}}"
+                    "<extra></extra>"
+                )
+            )
+
+            st.plotly_chart(
+                fig_map,
+                use_container_width=True
+            )
+
+        else:
+            st.warning("No recognized country locations found.")
+
 
     else:
-        st.warning("No recognized country locations found.")
+        st.caption(
+            "Global country map hidden: the dataset contains only one country. "
+            "A geographic comparison will appear when multiple countries are available."
+        )
 
 
     # ==========================================
@@ -1438,55 +1802,66 @@ elif page == "Product Intelligence":
 
 elif page == "Market Analysis":
 
-    st.header("Country-wise Market Analysis")
+    st.header("Market Analysis")
 
-    fig = px.bar(
-        countries.head(10),
-        x="Country",
-        y="Revenue",
-        title="Top 10 Countries by Revenue",
-        template="plotly_white"
-    )
+    country_count = countries["Country"].nunique()
 
-    fig.update_layout(
-        yaxis_title=f"Revenue ({selected_currency})",
-        yaxis_tickprefix=currency_symbol
-    )
-
-    fig.update_traces(
-        hovertemplate=(
-            "Country: %{x}<br>"
-            f"Revenue: {currency_symbol}%{{y:,.2f}}"
-            "<extra></extra>"
+    if country_count > 1:
+        st.subheader("Country-wise Revenue Comparison")
+        fig = px.bar(
+            countries.head(10),
+            x="Country",
+            y="Revenue",
+            title="Top Countries by Revenue",
+            template="plotly_white"
         )
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    display_countries = countries.copy()
-
-    display_countries["Revenue"] = display_countries["Revenue"].apply(
-        lambda x: f"{currency_symbol}{x:,.2f}"
-    )
-
-    st.dataframe(
-        display_countries,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    if total_revenue:
-
-        uk_revenue = countries.loc[
-            countries["Country"] == "United Kingdom",
-            "Revenue"
-        ].sum()
-
-        st.metric(
-            "UK Revenue Contribution",
-            f"{uk_revenue / total_revenue * 100:.1f}%"
+        fig.update_layout(
+            yaxis_title=f"Revenue ({selected_currency})",
+            yaxis_tickprefix=currency_symbol
         )
+        fig.update_traces(
+            hovertemplate=(
+                "Country: %{x}<br>"
+                f"Revenue: {currency_symbol}%{{y:,.2f}}"
+                "<extra></extra>"
+            )
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
+        display_countries = countries.copy()
+        display_countries["Revenue"] = display_countries["Revenue"].apply(
+            lambda x: f"{currency_symbol}{x:,.2f}"
+        )
+        st.dataframe(display_countries, use_container_width=True, hide_index=True)
+
+        # Only show this legacy KPI when the selected data actually contains UK.
+        uk_rows = countries[
+            countries["Country"].astype(str).str.casefold() == "united kingdom"
+        ]
+        if not uk_rows.empty and total_revenue:
+            uk_revenue = uk_rows["Revenue"].sum()
+            st.metric(
+                "United Kingdom Revenue Contribution",
+                f"{uk_revenue / total_revenue * 100:.1f}%"
+            )
+    elif country_count == 1:
+        only_market = countries.iloc[0]
+        st.subheader("Available Market")
+        m1, m2 = st.columns(2)
+        m1.metric("Detected Country", str(only_market["Country"]))
+        m2.metric("Revenue", f"{currency_symbol}{only_market['Revenue']:,.2f}")
+        st.metric("Orders", f"{int(only_market['Orders']):,}")
+        st.caption(
+            "Country comparison charts and country-share metrics are hidden "
+            "because only one country is present in this dataset."
+        )
+        display_countries = countries.copy()
+        display_countries["Revenue"] = display_countries["Revenue"].apply(
+            lambda x: f"{currency_symbol}{x:,.2f}"
+        )
+        st.dataframe(display_countries, use_container_width=True, hide_index=True)
+    else:
+        st.info("No country values are available for market analysis.")
 
 
 # ==========================================
