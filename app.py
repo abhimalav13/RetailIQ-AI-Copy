@@ -827,8 +827,10 @@ if is_olist_upload:
         )
         category_name = combined["product_category_name"].fillna("Uncategorised")
     else:
-        combined["product_category_name"] = "Uncategorised"
-        category_name = combined["product_category_name"]
+        # Without the optional products table, use product_id as a reliable
+        # item-level label instead of grouping every item as "Uncategorised".
+        combined["product_category_name"] = "Product ID"
+        category_name = combined["product_id"].astype(str)
 
     # Optional customer dimension.
     if olist_customers is not None and {
@@ -902,7 +904,9 @@ if is_olist_upload:
     st.caption(
         "Olist preparation: one row per order item; Quantity is represented as 1 per item row; "
         "revenue uses item price and excludes freight. Only delivered orders are included. "
-        "Customer/product/seller/review insights depend on the optional files uploaded."
+        "When the products file is missing, product_id is used as the product label; "
+        "category-level insights require the optional products file. "
+        "Customer/seller/review insights depend on the optional files uploaded."
     )
 
 else:
