@@ -1016,6 +1016,63 @@ def _forecast_from_daily_series(series, horizon=30):
     ).fit()
     return fitted.forecast(horizon)
 
+
+def _build_business_action_plan(recommendations, roles):
+    """Translate evidence-based recommendation rules into a practical action register."""
+    plans = []
+    for priority, heading, evidence in recommendations:
+        title = heading.lower()
+        if "concentration" in title or "dependence" in title:
+            action, owner, timeframe, measure = (
+                "Compare leading groups, identify growth barriers in smaller groups, and test a targeted campaign.",
+                "Sales / Marketing", "Next 2–4 weeks", "Revenue share by category / product / market")
+        elif "downward" in title:
+            action, owner, timeframe, measure = (
+                "Break the decline down by product, market and time; validate pricing, stock and campaign changes.",
+                "Business / Sales", "Within 1 week", "Weekly sales trend and segment contribution")
+        elif "growth" in title:
+            action, owner, timeframe, measure = (
+                "Identify growth-driving segments and check inventory, staffing and fulfilment capacity.",
+                "Operations / Sales", "Next 2 weeks", "Sales growth and fulfilment performance")
+        elif "experience" in title:
+            action, owner, timeframe, measure = (
+                "Review low-rated products or service areas and classify recurring complaint themes.",
+                "Customer Experience", "Next 1–2 weeks", "Average rating and low-rating share")
+        elif "delivery" in title:
+            action, owner, timeframe, measure = (
+                "Compare delivery lead times by region, carrier or shipping mode and investigate slow segments.",
+                "Operations", "Next 2 weeks", "Average delivery time and late-delivery share")
+        elif "churn" in title or "attrition" in title:
+            action, owner, timeframe, measure = (
+                "Compare churn outcomes across cohorts and validate possible retention interventions.",
+                "Customer Success / HR", "Next 2–4 weeks", "Churn / attrition rate by cohort")
+        elif "completeness" in title:
+            action, owner, timeframe, measure = (
+                "Prioritise missing fields used in core KPIs and trace the source of incomplete records.",
+                "Data / Analytics", "Next 1–2 weeks", "Missing-value rate in critical fields")
+        else:
+            action, owner, timeframe, measure = (
+                "Review detected fields and establish a baseline before setting a target.",
+                "Analytics", "Next 2 weeks", "Coverage and quality of key business metrics")
+        plans.append({
+            "Priority": priority, "Finding": heading, "Recommended action": action,
+            "Suggested owner": owner, "Suggested timeframe": timeframe,
+            "Metric to monitor": measure, "Evidence": evidence,
+        })
+    return pd.DataFrame(plans)
+
+
+@st.cache_data(show_spinner=False)
+def _calculate_revenue_scenario(base_revenue, sales_change_pct, scenario_label):
+    """Calculate a transparent what-if sales scenario from a user-selected percentage."""
+    base = float(base_revenue)
+    change = float(sales_change_pct)
+    projected = base * (1 + change / 100)
+    return {
+        "scenario": scenario_label, "baseline": base, "change_pct": change,
+        "projected": projected, "difference": projected - base,
+    }
+
 def _validated_role_columns(frame):
     """Return high-confidence semantic matches that passed basic type validation."""
     mapping = _semantic_column_mapping(frame)
@@ -1470,6 +1527,79 @@ def _render_adaptive_workspace(tables):
     else:
         st.info("Adaptive sales forecasting needs high-confidence Date and Revenue/Sales columns.")
 
+    st.subheader("Business Scenario Planner")
+    st.caption(
+        "Explore a what-if change to the selected dataset's total sales. "
+        "This is a planning assumption, not a model prediction."
+    )
+    scenario_measure = validated_roles.get("Revenue / Sales")
+    if scenario_measure:
+        scenario_values = pd.to_numeric(working[scenario_measure], errors="coerce").dropna()
+        if len(scenario_values):
+            baseline_revenue = float(scenario_values.sum())
+            s1, s2 = st.columns([2, 1])
+            with s1:
+                scenario_change = st.slider(
+                    "Assumed change in sales (%)", -50, 100, 10, 5,
+                    key=f"scenario_sales_change_{_clean_name(base_name)}"
+                )
+            with s2:
+                scenario_label = st.selectbox(
+                    "Scenario", ["Conservative", "Base case", "Optimistic"], index=1,
+                    key=f"scenario_label_{_clean_name(base_name)}"
+                )
+            scenario = _calculate_revenue_scenario(
+                baseline_revenue, scenario_change, scenario_label
+            )
+            scenario_metrics = st.columns(3)
+            scenario_metrics[0].metric("Baseline sales", f"{scenario['baseline']:,.2f}")
+            scenario_metrics[1].metric(
+                "Scenario sales", f"{scenario['projected']:,.2f}",
+                f"{scenario['change_pct']:+.1f}%"
+            )
+            scenario_metrics[2].metric(
+                "Estimated difference", f"{scenario['difference']:+,.2f}"
+            )
+            scenario_chart = pd.DataFrame({
+                "Measure": ["Baseline", scenario_label],
+                "Sales": [scenario["baseline"], scenario["projected"]],
+            })
+            st.plotly_chart(
+                px.bar(scenario_chart, x="Measure", y="Sales",
+                       title="Baseline vs what-if sales scenario", template="plotly_white"),
+                use_container_width=True, key=f"scenario_chart_{_clean_name(base_name)}"
+            )
+            st.caption(
+                "The scenario applies the selected percentage to historical total sales. "
+                "It does not estimate demand elasticity, costs, profit or causal effects."
+            )
+            st.download_button(
+                "Download Scenario Summary (CSV)", data=scenario_chart.to_csv(index=False),
+                file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_scenario_summary.csv",
+                mime="text/csv", key=f"scenario_download_{_clean_name(base_name)}"
+            )
+        else:
+            st.info("No valid numeric sales values are available for scenario planning.")
+    else:
+        st.info("Scenario planning needs a high-confidence Revenue / Sales column.")
+
+    st.subheader("Business Action Plan")
+    st.caption(
+        "A practical action register generated from the rule-based findings above. "
+        "Owners and timeframes are suggestions and should be confirmed by your team."
+    )
+    action_plan = _build_business_action_plan(business_recommendations, validated_roles)
+    st.dataframe(
+        action_plan[["Priority", "Finding", "Recommended action", "Suggested owner",
+                     "Suggested timeframe", "Metric to monitor"]],
+        use_container_width=True, hide_index=True
+    )
+    st.download_button(
+        "Download Business Action Plan (CSV)", data=_cached_csv_export(action_plan),
+        file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_action_plan.csv",
+        mime="text/csv", key=f"action_plan_download_{_clean_name(base_name)}"
+    )
+
     st.subheader("Export Business Report")
     st.caption(
         "Download a concise text report containing the selected dataset profile, "
@@ -1515,6 +1645,15 @@ def _render_adaptive_workspace(tables):
             report_lines.extend([f"[{priority}] {heading}", detail, ""])
     else:
         report_lines.append("No rule-based recommendations were triggered for this dataset.")
+    report_lines.extend(["", "SUGGESTED BUSINESS ACTION PLAN", "-" * 30])
+    for _, action_row in action_plan.iterrows():
+        report_lines.append(
+            f"[{action_row['Priority']}] {action_row['Finding']} | "
+            f"Owner: {action_row['Suggested owner']} | "
+            f"Timeframe: {action_row['Suggested timeframe']} | "
+            f"Action: {action_row['Recommended action']} | "
+            f"Monitor: {action_row['Metric to monitor']}"
+        )
     report_lines.extend([
         "",
         "NOTE",
