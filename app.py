@@ -61,6 +61,25 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stMetricValue"] {
     color: #FFFFFF !important;
 }
+
+/* Fix success/status cards inside the readiness expander.
+   Streamlit success alerts have a pale-green default background, so use
+   a dark navy panel with high-contrast white text in the sidebar. */
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stAlert"],
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-baseweb="notification"] {
+    background: #263B60 !important;
+    background-color: #263B60 !important;
+    border: 1px solid rgba(255,255,255,0.22) !important;
+    border-radius: 9px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stAlert"] *,
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-baseweb="notification"] * {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stAlert"] svg {
+    fill: #FFFFFF !important;
+    color: #FFFFFF !important;
+}
 [data-testid="stSidebar"] [data-testid="stDownloadButton"] button,
 [data-testid="stSidebar"] .stDownloadButton button {
     background-color: #00A6A6 !important;
