@@ -217,8 +217,18 @@ import os
 
 @st.cache_data
 def load_data(file_bytes, file_name):
+    """Read CSVs with common encodings; leave Excel handling unchanged."""
     if file_name.lower().endswith(".csv"):
-        return pd.read_csv(io.BytesIO(file_bytes))
+        last_error = None
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
+            try:
+                return pd.read_csv(io.BytesIO(file_bytes), encoding=encoding, low_memory=False)
+            except UnicodeDecodeError as exc:
+                last_error = exc
+        raise ValueError(
+            "Could not decode this CSV using UTF-8, UTF-8-BOM, Windows-1252 or Latin-1. "
+            f"Please check that the file is a text CSV. Details: {last_error}"
+        )
     return pd.read_excel(io.BytesIO(file_bytes))
 
 
@@ -280,53 +290,80 @@ def _clean_name(value):
 
 
 def _is_identifier_name(column):
+    """Identify record keys and code-like columns without treating all numbers as measures."""
     name = _clean_name(column)
-    identifier_tokens = (
-        "id", "code", "sku", "uuid", "key", "zipcode", "postalcode",
-        "phonenumber", "invoice", "ordernumber", "transactionnumber"
+    exact_ids = {
+        "id", "rownumber", "rownumberid", "index", "recordnumber", "serialnumber",
+        "customerid", "customeruniqueid", "employeeid", "employeenumber", "productid", "orderid",
+        "orderitemid", "invoiceid", "invoiceno", "transactionid", "sellerid",
+        "departmentid", "categoryid", "stockcode", "productcode", "sku", "uuid",
+        "zipcode", "postalcode", "phonenumber", "accesskey"
+    }
+    return (
+        name in exact_ids
+        or name.endswith("id")
+        or name.endswith("uuid")
+        or name.endswith("code")
+        or name.endswith("key")
+        or name in {"latitude", "longitude", "lat", "lon", "lng"}
+        or name in {"customeremail", "customerpassword", "customerstreet"}
     )
-    return any(token in name for token in identifier_tokens)
+
+
+def _is_flag_name(column):
+    name = _clean_name(column)
+    flag_tokens = (
+        "attrition", "exited", "churn", "isactive", "hascrcard", "late_delivery_risk",
+        "late delivery risk", "flag", "risk", "isdelivered", "isreturned", "cancelled"
+    )
+    return any(_clean_name(token) in name for token in flag_tokens)
 
 
 def _profile_table(frame):
     profile = {
-        "rows": len(frame),
-        "columns": len(frame.columns),
-        "numeric": [],
-        "dates": [],
-        "categorical": [],
-        "identifiers": [],
-        "missing": {}
+        "rows": len(frame), "columns": len(frame.columns), "numeric": [],
+        "dates": [], "categorical": [], "identifiers": [], "geo": [], "metadata": [],
+        "missing": {}, "unique": {}, "duplicate_rows": int(frame.duplicated().sum())
     }
     for col in frame.columns:
         series = frame[col]
         profile["missing"][col] = int(series.isna().sum())
+        profile["unique"][col] = int(series.nunique(dropna=True))
+        name = _clean_name(col)
 
+        if name in {"latitude", "longitude", "lat", "lon", "lng"}:
+            profile["geo"].append(col)
+            continue
+        if _is_identifier_name(col):
+            profile["identifiers"].append(col)
+            continue
         if pd.api.types.is_datetime64_any_dtype(series):
             profile["dates"].append(col)
             continue
 
-        name = _clean_name(col)
         date_name = any(token in name for token in (
             "date", "time", "timestamp", "created", "updated", "month", "year"
         ))
         if date_name and not pd.api.types.is_numeric_dtype(series):
             parsed = pd.to_datetime(series, errors="coerce")
-            if len(series.dropna()) and parsed.notna().mean() >= 0.65:
+            nonmissing = int(series.notna().sum())
+            if nonmissing and parsed.notna().sum() / nonmissing >= 0.65:
                 profile["dates"].append(col)
                 continue
 
         converted = pd.to_numeric(series, errors="coerce")
-        numeric_ratio = converted.notna().mean() if len(series) else 0
-        if pd.api.types.is_numeric_dtype(series) or numeric_ratio >= 0.85:
-            if _is_identifier_name(col):
-                profile["identifiers"].append(col)
-            else:
-                profile["numeric"].append(col)
-        elif series.nunique(dropna=True) <= max(50, int(len(series) * 0.20)):
+        nonmissing = int(series.notna().sum())
+        numeric_ratio = converted.notna().sum() / nonmissing if nonmissing else 0
+        unique_count = profile["unique"][col]
+        if unique_count <= 1 and pd.api.types.is_numeric_dtype(series):
+            profile["metadata"].append(col)
+            continue
+        if _is_flag_name(col) or (unique_count == 2 and numeric_ratio >= 0.85):
             profile["categorical"].append(col)
-        elif _is_identifier_name(col):
-            profile["identifiers"].append(col)
+        elif pd.api.types.is_numeric_dtype(series) or numeric_ratio >= 0.85:
+            profile["numeric"].append(col)
+        elif unique_count <= max(50, int(len(series) * 0.20)):
+            profile["categorical"].append(col)
 
     return profile
 
@@ -343,15 +380,102 @@ def _retail_schema_is_compatible(frame):
     return all(bool(normalized & values) for values in aliases.values())
 
 
+def _find_column(frame, aliases):
+    lookup = {_clean_name(c): c for c in frame.columns}
+    for alias in aliases:
+        if _clean_name(alias) in lookup:
+            return lookup[_clean_name(alias)]
+    return None
+
+
+def _truthy_mask(series):
+    """Interpret common binary/text outcomes without assuming a particular encoding."""
+    text = series.astype(str).str.strip().str.lower()
+    return text.isin({"1", "yes", "y", "true", "left", "exited", "churned", "late", "delayed"})
+
+
+def _domain_summary(frame):
+    cols = {_clean_name(c): c for c in frame.columns}
+    has = lambda *names: any(_clean_name(n) in cols for n in names)
+    if has("Attrition") and (has("Department") or has("JobRole")):
+        return "HR / Employee Analytics"
+    if has("Exited", "Churn") and (has("CreditScore") or has("Balance") or has("Geography")):
+        return "Banking / Customer Churn"
+    if has("Late_delivery_risk", "Delivery Status", "Days for shipping (real)"):
+        return "Supply Chain / Logistics"
+    if has("InvoiceNo", "StockCode", "Quantity", "UnitPrice"):
+        return "Retail Transactions"
+    return "General Dataset Analytics"
+
+
+def _render_domain_kpis(frame, domain):
+    """Render only KPIs supported by recognizable columns in the uploaded data."""
+    cards = []
+    if domain == "HR / Employee Analytics":
+        target = _find_column(frame, ["Attrition"])
+        if target:
+            left = _truthy_mask(frame[target])
+            cards.extend([
+                ("Employees", f"{len(frame):,}"),
+                ("Employees left", f"{int(left.sum()):,}"),
+                ("Attrition rate", f"{left.mean() * 100:.1f}%" if len(left) else "—")
+            ])
+        age = _find_column(frame, ["Age"])
+        if age:
+            vals = pd.to_numeric(frame[age], errors="coerce").dropna()
+            if len(vals): cards.append(("Average age", f"{vals.mean():.1f}"))
+    elif domain == "Banking / Customer Churn":
+        target = _find_column(frame, ["Exited", "Churn", "Churned"])
+        active = _find_column(frame, ["IsActiveMember", "ActiveMember", "IsActive"])
+        balance = _find_column(frame, ["Balance", "AccountBalance"])
+        cards.append(("Customers", f"{len(frame):,}"))
+        if target:
+            churn = _truthy_mask(frame[target])
+            cards.extend([("Customers churned", f"{int(churn.sum()):,}"),
+                          ("Churn rate", f"{churn.mean() * 100:.1f}%" if len(churn) else "—")])
+        if active:
+            active_mask = _truthy_mask(frame[active])
+            cards.append(("Active customers", f"{int(active_mask.sum()):,}"))
+        if balance:
+            vals = pd.to_numeric(frame[balance], errors="coerce").dropna()
+            if len(vals): cards.append(("Average balance", f"{vals.mean():,.2f}"))
+    elif domain == "Supply Chain / Logistics":
+        shipping = _find_column(frame, ["Days for shipping (real)", "ActualShippingDays", "ShippingDays"])
+        late = _find_column(frame, ["Late_delivery_risk", "LateDeliveryRisk"])
+        sales = _find_column(frame, ["Sales", "Revenue", "OrderSales"])
+        cards.append(("Order / line records", f"{len(frame):,}"))
+        if shipping:
+            vals = pd.to_numeric(frame[shipping], errors="coerce").dropna()
+            if len(vals): cards.append(("Average shipping days", f"{vals.mean():.2f}"))
+        if late:
+            risk = _truthy_mask(frame[late])
+            cards.append(("Late-delivery risk", f"{risk.mean() * 100:.1f}%" if len(risk) else "—"))
+        if sales:
+            vals = pd.to_numeric(frame[sales], errors="coerce").dropna()
+            if len(vals): cards.append(("Sales total", f"{vals.sum():,.2f}"))
+    else:
+        cards.append(("Records", f"{len(frame):,}"))
+        for label, aliases, agg in [
+            ("Total sales", ["Sales", "Revenue", "Amount"], "sum"),
+            ("Average value", ["Amount", "Price", "Balance"], "mean")
+        ]:
+            col = _find_column(frame, aliases)
+            if col:
+                vals = pd.to_numeric(frame[col], errors="coerce").dropna()
+                if len(vals): cards.append((label, f"{getattr(vals, agg)():,.2f}"))
+    if cards:
+        cols = st.columns(min(4, len(cards)))
+        for i, (label, value) in enumerate(cards):
+            cols[i % len(cols)].metric(label, value)
+
+
 def _render_adaptive_workspace(tables):
-    """Generic, evidence-led analytics for non-legacy and multi-table uploads."""
+    """Dataset-aware analytics for non-legacy and multi-table uploads."""
     st.title("RetailIQ AI")
     st.subheader("Adaptive Analytics & Data Explorer")
     st.caption(
-        "This dataset does not match the original Online Retail transaction schema. "
-        "RetailIQ is profiling the actual columns and will only create analyses supported by the data."
+        "RetailIQ profiles the uploaded data, detects likely business context and only displays analyses supported by available fields."
     )
-
     st.success("Adaptive mode enabled — the original Online Retail dashboard logic has not been applied.")
 
     table_names = list(tables.keys())
@@ -359,7 +483,6 @@ def _render_adaptive_workspace(tables):
         st.error("No readable tables were found.")
         return
 
-    # Show a compact inventory of all uploaded tables.
     inventory = pd.DataFrame([
         {"Table": name, "Rows": len(tables[name]), "Columns": len(tables[name].columns)}
         for name in table_names
@@ -367,250 +490,233 @@ def _render_adaptive_workspace(tables):
     with st.expander("Uploaded data inventory", expanded=len(table_names) > 1):
         st.dataframe(inventory, use_container_width=True, hide_index=True)
 
-    working = None
-    base_name = None
-
+    working, base_name = None, None
     if len(table_names) == 1:
         base_name = table_names[0]
         working = tables[base_name].copy()
     else:
         st.subheader("Choose a primary table")
         default_base = max(table_names, key=lambda n: len(tables[n]))
-        base_name = st.selectbox(
-            "Primary table for analysis",
-            table_names,
-            index=table_names.index(default_base),
-            key="adaptive_primary_table"
-        )
+        base_name = st.selectbox("Primary table for analysis", table_names,
+                                 index=table_names.index(default_base), key="adaptive_primary_table")
         working = tables[base_name].copy()
-
         st.subheader("Optional table relationships")
-        st.caption(
-            "Choose matching key columns only when they represent the same entity. "
-            "Review row counts after each join; many-to-many joins can multiply records."
-        )
+        st.caption("Join matching keys only when they represent the same entity. Many-to-many joins can multiply records.")
         for idx, other_name in enumerate([n for n in table_names if n != base_name]):
             other = tables[other_name]
             with st.expander(f"Join {other_name}", expanded=False):
                 common = [c for c in working.columns if c in other.columns]
-                left_key_options = list(working.columns)
-                right_key_options = list(other.columns)
-                include = st.checkbox(
-                    f"Include {other_name}",
-                    value=False,
-                    key=f"adaptive_join_include_{idx}"
-                )
+                include = st.checkbox(f"Include {other_name}", value=False, key=f"adaptive_join_include_{idx}")
                 if not include:
-                    st.caption(
-                        f"Potential common columns: {', '.join(common[:8]) if common else 'None detected'}"
-                    )
+                    st.caption(f"Potential common columns: {', '.join(common[:8]) if common else 'None detected'}")
                     continue
-
-                suggested_left = common[0] if common else left_key_options[0]
-                suggested_right = suggested_left if suggested_left in right_key_options else right_key_options[0]
+                left_options, right_options = list(working.columns), list(other.columns)
+                suggested_left = common[0] if common else left_options[0]
+                suggested_right = suggested_left if suggested_left in right_options else right_options[0]
                 c1, c2 = st.columns(2)
-                left_key = c1.selectbox(
-                    "Primary-table key",
-                    left_key_options,
-                    index=left_key_options.index(suggested_left),
-                    key=f"adaptive_left_key_{idx}"
-                )
-                right_key = c2.selectbox(
-                    "Related-table key",
-                    right_key_options,
-                    index=right_key_options.index(suggested_right),
-                    key=f"adaptive_right_key_{idx}"
-                )
-                join_how = st.selectbox(
-                    "Join type",
-                    ["left", "inner", "outer"],
-                    key=f"adaptive_join_how_{idx}"
-                )
+                left_key = c1.selectbox("Primary-table key", left_options, index=left_options.index(suggested_left), key=f"adaptive_left_key_{idx}")
+                right_key = c2.selectbox("Related-table key", right_options, index=right_options.index(suggested_right), key=f"adaptive_right_key_{idx}")
+                join_how = st.selectbox("Join type", ["left", "inner", "outer"], key=f"adaptive_join_how_{idx}")
                 if working[left_key].duplicated().any() and other[right_key].duplicated().any():
-                    st.warning(
-                        "Both selected keys contain duplicates. This is a many-to-many join "
-                        "and may multiply rows. Confirm that this relationship is intended."
-                    )
+                    st.warning("Both selected keys contain duplicates. This many-to-many join may multiply rows.")
                 if st.button(f"Apply join: {other_name}", key=f"adaptive_apply_join_{idx}"):
                     try:
-                        working = working.merge(
-                            other,
-                            left_on=left_key,
-                            right_on=right_key,
-                            how=join_how,
-                            suffixes=("", f"_{_clean_name(other_name)[:12]}")
-                        )
-                        st.session_state["adaptive_joined_frame"] = working
+                        joined = working.merge(other, left_on=left_key, right_on=right_key, how=join_how,
+                                               suffixes=("", f"_{_clean_name(other_name)[:12]}"))
+                        st.session_state["adaptive_joined_frame"] = joined
                         st.session_state["adaptive_joined_base"] = base_name
-                        st.success(
-                            f"Join applied. Result: {len(working):,} rows and {len(working.columns):,} columns."
-                        )
+                        st.success(f"Join applied: {len(joined):,} rows and {len(joined.columns):,} columns.")
                     except Exception as exc:
                         st.error(f"Join could not be completed: {exc}")
                     st.rerun()
-
-        if (
-            st.session_state.get("adaptive_joined_base") == base_name
-            and "adaptive_joined_frame" in st.session_state
-        ):
+        if st.session_state.get("adaptive_joined_base") == base_name and "adaptive_joined_frame" in st.session_state:
             working = st.session_state["adaptive_joined_frame"].copy()
 
     if working is None or working.empty:
         st.warning("The selected table is empty.")
         return
 
-    # Normalize obvious date and numeric columns for analysis without changing source columns.
     profile = _profile_table(working)
-    date_options = profile["dates"]
-    numeric_options = profile["numeric"]
-    category_options = profile["categorical"]
-
+    date_options, numeric_options, category_options = profile["dates"], profile["numeric"], profile["categorical"]
+    domain = _domain_summary(working)
     st.subheader("Data quality and structure")
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Records", f"{len(working):,}")
-    k2.metric("Columns", f"{len(working.columns):,}")
-    k3.metric("Numeric measures", f"{len(numeric_options):,}")
-    k4.metric("Date fields", f"{len(date_options):,}")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("Records", f"{len(working):,}")
+    q2.metric("Columns", f"{len(working.columns):,}")
+    q3.metric("Business measures", f"{len(numeric_options):,}")
+    q4.metric("Date fields", f"{len(date_options):,}")
 
     profile_rows = []
     for col in working.columns:
-        profile_rows.append({
-            "Column": str(col),
-            "Detected type": (
-                "Date" if col in profile["dates"] else
-                "Numeric measure" if col in profile["numeric"] else
-                "Identifier" if col in profile["identifiers"] else
-                "Category / text"
-            ),
-            "Missing": profile["missing"][col],
-            "Unique values": int(working[col].nunique(dropna=True))
-        })
+        detected = ("Date" if col in profile["dates"] else
+                    "Identifier / key" if col in profile["identifiers"] else
+                    "Geographic coordinate" if col in profile["geo"] else
+                    "Constant / metadata" if col in profile["metadata"] else
+                    "Numeric measure" if col in profile["numeric"] else
+                    "Category / flag" if col in profile["categorical"] else "Text / high-cardinality")
+        profile_rows.append({"Column": str(col), "Detected type": detected,
+                             "Missing": profile["missing"][col], "Unique values": profile["unique"][col]})
     st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
 
+    total_cells = max(1, len(working) * len(working.columns))
+    missing_cells = int(working.isna().sum().sum())
+    missing_pct = missing_cells / total_cells * 100
+    duplicate_rows = profile["duplicate_rows"]
+    with st.expander("Data quality checks", expanded=False):
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Missing cells", f"{missing_cells:,}", f"{missing_pct:.2f}% of all cells")
+        d2.metric("Duplicate rows", f"{duplicate_rows:,}")
+        d3.metric("Identifier fields", f"{len(profile['identifiers']):,}")
+        high_missing = [(c, n) for c, n in profile["missing"].items() if n / max(1, len(working)) >= 0.20]
+        if high_missing:
+            st.warning("Columns with at least 20% missing values: " + ", ".join(f"{c} ({n:,})" for c, n in high_missing[:12]))
+        else:
+            st.success("No columns have 20% or more missing values.")
+
+    st.subheader(f"Adaptive overview — {domain}")
+    _render_domain_kpis(working, domain)
+    overview = st.columns(3)
+    overview[0].metric("Distinct categories", f"{sum(working[c].nunique(dropna=True) for c in category_options):,}")
+    overview[1].metric("Numeric fields", f"{len(numeric_options):,}")
+    overview[2].metric("Missing cells", f"{missing_cells:,}")
+
     if not numeric_options and not category_options and not date_options:
-        st.info("The uploaded table has no suitable numeric, date, or categorical fields for charts.")
-        st.subheader("Data preview")
+        st.info("No suitable numeric, date or categorical fields were detected.")
         st.dataframe(working.head(100), use_container_width=True)
         return
 
-    st.subheader("Adaptive overview")
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Total records", f"{len(working):,}")
-    metric_cols[1].metric("Distinct categories", f"{sum(working[c].nunique(dropna=True) for c in category_options):,}")
-    metric_cols[2].metric("Numeric fields", f"{len(numeric_options):,}")
-    metric_cols[3].metric("Missing cells", f"{int(working.isna().sum().sum()):,}")
+    # Choose a useful measure by semantic priority, excluding identifiers, flags and coordinates.
+    preferred_measure = None
+    measure_aliases = {
+        "HR / Employee Analytics": ["MonthlyIncome", "Age", "YearsAtCompany"],
+        "Banking / Customer Churn": ["Balance", "EstimatedSalary", "CreditScore", "Age"],
+        "Supply Chain / Logistics": ["Sales", "Order Item Total", "Order Profit Per Order", "Days for shipping (real)"],
+        "General Dataset Analytics": ["Sales", "Revenue", "Amount", "Profit", "Price"]
+    }
+    for alias in measure_aliases.get(domain, []):
+        found = _find_column(working, [alias])
+        if found in numeric_options:
+            preferred_measure = found
+            break
+    if preferred_measure is None and numeric_options:
+        preferred_measure = numeric_options[0]
 
-    # A numeric field is selected by the user from detected measures; no revenue/profit
-    # label is invented when the uploaded data does not contain one.
-    if numeric_options:
-        measure = st.selectbox(
-            "Choose a numeric measure to analyse",
-            numeric_options,
-            key="adaptive_measure"
-        )
-        measure_values = pd.to_numeric(working[measure], errors="coerce").dropna()
-        m1, m2, m3 = st.columns(3)
-        m1.metric(f"Total {measure}", f"{measure_values.sum():,.2f}")
-        m2.metric(f"Average {measure}", f"{measure_values.mean():,.2f}" if len(measure_values) else "—")
-        m3.metric(f"Median {measure}", f"{measure_values.median():,.2f}" if len(measure_values) else "—")
-    else:
-        measure = None
-        st.info("No numeric measure was detected. Numeric KPIs and measure-based charts are hidden.")
+    st.subheader("Explore your data")
+    measure = st.selectbox("Numeric measure", numeric_options,
+                           index=numeric_options.index(preferred_measure) if preferred_measure in numeric_options else 0,
+                           key=f"adaptive_measure_{_clean_name(base_name)}") if numeric_options else None
+    if measure:
+        values = pd.to_numeric(working[measure], errors="coerce").dropna()
+        a1, a2, a3 = st.columns(3)
+        a1.metric(f"Total {measure}", f"{values.sum():,.2f}" if len(values) else "—")
+        a2.metric(f"Average {measure}", f"{values.mean():,.2f}" if len(values) else "—")
+        a3.metric(f"Median {measure}", f"{values.median():,.2f}" if len(values) else "—")
 
-    tabs = st.tabs(["Visual analysis", "Relationships", "Data preview"])
+    # Prefer meaningful domain category fields rather than stale widget selections.
+    preferred_category = None
+    category_aliases = {
+        "HR / Employee Analytics": ["Attrition", "Department", "JobRole", "Gender"],
+        "Banking / Customer Churn": ["Exited", "Geography", "Gender", "IsActiveMember"],
+        "Supply Chain / Logistics": ["Delivery Status", "Order Region", "Type", "Shipping Mode", "Market"],
+        "General Dataset Analytics": []
+    }
+    for alias in category_aliases.get(domain, []):
+        found = _find_column(working, [alias])
+        if found in category_options:
+            preferred_category = found
+            break
+    if preferred_category is None and category_options:
+        preferred_category = category_options[0]
 
+    tabs = st.tabs(["Overview & visuals", "Relationships", "Data preview"])
     with tabs[0]:
-        if date_options and measure:
-            date_col = st.selectbox("Date field", date_options, key="adaptive_date")
-            temp = working[[date_col, measure]].copy()
-            temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-            temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
-            temp = temp.dropna()
-            if not temp.empty:
-                trend = temp.set_index(date_col).resample("MS")[measure].sum().reset_index()
-                st.plotly_chart(
-                    px.line(trend, x=date_col, y=measure, markers=True,
-                            title=f"{measure} over time", template="plotly_white"),
-                    use_container_width=True
-                )
-            else:
-                st.caption("The selected date and measure fields do not contain enough valid paired values.")
+        if date_options:
+            date_default = date_options[0]
+            date_col = st.selectbox("Date field", date_options, index=0,
+                                    key=f"adaptive_date_{_clean_name(base_name)}")
+            if measure:
+                trend_agg = st.selectbox("Time trend aggregation", ["Sum", "Average", "Record count"],
+                                         index=1 if any(t in _clean_name(measure) for t in ["days", "duration", "age", "score", "rate"]) else 0,
+                                         key=f"adaptive_time_agg_{_clean_name(base_name)}")
+                temp = working[[date_col, measure]].copy()
+                temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+                temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
+                temp = temp.dropna()
+                if not temp.empty:
+                    grouped_series = temp.set_index(date_col)[measure].resample("MS")
+                    trend = (grouped_series.sum() if trend_agg == "Sum" else
+                             grouped_series.mean() if trend_agg == "Average" else grouped_series.count()).reset_index(name=measure)
+                    st.plotly_chart(px.line(trend, x=date_col, y=measure, markers=True,
+                                            title=f"{trend_agg} {measure} by month", template="plotly_white"),
+                                    use_container_width=True, key=f"adaptive_trend_{_clean_name(base_name)}")
+                else:
+                    st.caption("No valid date-and-measure pairs were found for this trend.")
 
-        if category_options and measure:
-            category_col = st.selectbox(
-                "Category field",
-                category_options,
-                key="adaptive_category"
-            )
-            limit = st.slider("Number of categories to display", 5, 25, 10, key="adaptive_category_limit")
-            temp = working[[category_col, measure]].copy()
-            temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
-            grouped = (
-                temp.dropna(subset=[category_col, measure])
-                .groupby(category_col, dropna=False)[measure]
-                .sum()
-                .sort_values(ascending=False)
-                .head(limit)
-                .reset_index()
-            )
+        if category_options:
+            category_col = st.selectbox("Category field", category_options,
+                                        index=category_options.index(preferred_category) if preferred_category in category_options else 0,
+                                        key=f"adaptive_category_{_clean_name(base_name)}")
+            limit = st.slider("Number of categories to display", 5, 25, 10,
+                              key=f"adaptive_category_limit_{_clean_name(base_name)}")
+            chart_metric_options = ["Record count"]
+            if measure:
+                chart_metric_options += [f"Sum of {measure}", f"Average {measure}"]
+            chart_metric = st.selectbox("Category chart value", chart_metric_options,
+                                        key=f"adaptive_chart_metric_{_clean_name(base_name)}")
+            if chart_metric == "Record count":
+                grouped = working[category_col].fillna("Missing").value_counts().head(limit).rename("Records").reset_index()
+                grouped.columns = [category_col, "Records"]
+                y_col = "Records"
+            else:
+                temp = working[[category_col, measure]].copy()
+                temp[measure] = pd.to_numeric(temp[measure], errors="coerce")
+                grouped_obj = temp.dropna(subset=[measure]).groupby(category_col, dropna=False)[measure]
+                grouped_obj = grouped_obj.sum() if chart_metric.startswith("Sum") else grouped_obj.mean()
+                grouped = grouped_obj.sort_values(ascending=False).head(limit).reset_index()
+                y_col = measure
             if not grouped.empty:
-                st.plotly_chart(
-                    px.bar(grouped, x=category_col, y=measure, title=f"{measure} by {category_col}",
-                           template="plotly_white"),
-                    use_container_width=True
-                )
+                title_metric = "Number of records" if chart_metric == "Record count" else chart_metric
+                st.plotly_chart(px.bar(grouped, x=category_col, y=y_col,
+                                       title=f"{title_metric} by {category_col}", template="plotly_white"),
+                                use_container_width=True, key=f"adaptive_category_bar_{_clean_name(base_name)}")
                 if 2 <= len(grouped) <= 8:
-                    st.plotly_chart(
-                        px.pie(grouped, names=category_col, values=measure, hole=0.5,
-                               title=f"{measure} share by {category_col}"),
-                        use_container_width=True
-                    )
+                    st.plotly_chart(px.pie(grouped, names=category_col, values=y_col, hole=0.5,
+                                           title=f"{title_metric} share by {category_col}"),
+                                    use_container_width=True, key=f"adaptive_category_pie_{_clean_name(base_name)}")
 
         if measure:
-            st.plotly_chart(
-                px.histogram(
-                    working,
-                    x=measure,
-                    nbins=30,
-                    title=f"Distribution of {measure}",
-                    template="plotly_white"
-                ),
-                use_container_width=True
-            )
+            st.plotly_chart(px.histogram(working, x=measure, nbins=30,
+                                         title=f"Distribution of {measure}", template="plotly_white"),
+                            use_container_width=True, key=f"adaptive_hist_{_clean_name(base_name)}")
 
-        if len(numeric_options) >= 2:
-            corr = working[numeric_options].apply(pd.to_numeric, errors="coerce").corr()
+        corr_fields = numeric_options[:15]
+        if len(corr_fields) >= 2:
+            corr = working[corr_fields].apply(pd.to_numeric, errors="coerce").corr()
             if corr.shape[0] >= 2:
-                st.plotly_chart(
-                    px.imshow(corr, text_auto=".2f", aspect="auto",
-                              title="Correlation between numeric measures",
-                              color_continuous_scale="RdBu", zmin=-1, zmax=1),
-                    use_container_width=True
-                )
+                st.plotly_chart(px.imshow(corr, text_auto=".2f", aspect="auto",
+                                          title="Correlation between numeric measures",
+                                          color_continuous_scale="RdBu", zmin=-1, zmax=1),
+                                use_container_width=True, key=f"adaptive_corr_{_clean_name(base_name)}")
 
         if not date_options and not category_options and not numeric_options:
             st.info("No chart is displayed because the data does not support a meaningful visual.")
 
     with tabs[1]:
-        st.caption("Detected potential join keys and identifier fields.")
+        st.caption("Detected potential join keys, identifiers and geographic coordinates.")
         if profile["identifiers"]:
             st.write("Identifier fields:", ", ".join(map(str, profile["identifiers"])))
-        else:
-            st.info("No obvious identifier fields were detected in this table.")
+        if profile["geo"]:
+            st.write("Geographic fields:", ", ".join(map(str, profile["geo"])))
         if len(table_names) > 1:
             st.write("Uploaded tables:", ", ".join(table_names))
-            st.info("Use the optional table-join controls above. Verify key meaning and row counts before relying on joined metrics.")
+            st.info("Review key meaning and row counts before relying on joined metrics.")
         else:
             st.info("Upload related tables together to explore possible relationships.")
 
     with tabs[2]:
         st.dataframe(working.head(500), use_container_width=True)
-        st.download_button(
-            "Download analysed table",
-            data=working.to_csv(index=False).encode("utf-8"),
-            file_name="retailiq_analysed_data.csv",
-            mime="text/csv"
-        )
+        st.download_button("Download analysed table", data=working.to_csv(index=False).encode("utf-8"),
+                           file_name="retailiq_analysed_data.csv", mime="text/csv")
 
 
 # Detect Olist multi-table upload by its characteristic file names.
