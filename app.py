@@ -1316,6 +1316,81 @@ def _render_adaptive_workspace(tables):
         st.warning("The selected table is empty.")
         return
 
+    # Batch 5: interactive filters are applied only to the selected working copy.
+    # The uploaded source tables remain unchanged.
+    unfiltered_rows = len(working)
+    filter_profile = _profile_table(working)
+    st.subheader("Interactive Data Filters")
+    st.caption(
+        "Filter the selected table before running the analytics below. "
+        "Filters affect this analysis view and its exports, not the uploaded source files."
+    )
+    filtered = working.copy()
+    filter_cols = st.columns(2)
+
+    available_date_cols = filter_profile["dates"]
+    if available_date_cols:
+        with filter_cols[0]:
+            filter_date_col = st.selectbox(
+                "Date field", ["No date filter"] + available_date_cols,
+                key=f"adaptive_filter_date_col_{_clean_name(base_name)}"
+            )
+        if filter_date_col != "No date filter":
+            parsed_dates = pd.to_datetime(filtered[filter_date_col], errors="coerce")
+            valid_dates = parsed_dates.dropna()
+            if not valid_dates.empty:
+                min_date = valid_dates.min().date()
+                max_date = valid_dates.max().date()
+                with filter_cols[1]:
+                    selected_dates = st.date_input(
+                        "Date range", value=(min_date, max_date),
+                        min_value=min_date, max_value=max_date,
+                        key=f"adaptive_filter_date_range_{_clean_name(base_name)}"
+                    )
+                if isinstance(selected_dates, (tuple, list)) and len(selected_dates) == 2:
+                    start_date, end_date = selected_dates
+                    filtered = filtered.loc[
+                        parsed_dates.dt.date.between(start_date, end_date)
+                    ].copy()
+                elif isinstance(selected_dates, (tuple, list)) and len(selected_dates) == 1:
+                    filtered = filtered.loc[parsed_dates.dt.date == selected_dates[0]].copy()
+            else:
+                st.info("The selected date column has no valid dates to filter.")
+    else:
+        st.info("No date column was detected; date filtering is unavailable.")
+
+    filterable_categories = [
+        col for col in filter_profile["categorical"]
+        if 2 <= int(filter_profile["unique"].get(col, 0)) <= 50
+    ]
+    if filterable_categories:
+        category_col = st.selectbox(
+            "Category field", ["No category filter"] + filterable_categories,
+            key=f"adaptive_filter_category_col_{_clean_name(base_name)}"
+        )
+        if category_col != "No category filter":
+            category_values = sorted(
+                filtered[category_col].dropna().astype(str).unique().tolist()
+            )
+            selected_categories = st.multiselect(
+                "Keep selected categories (leave blank to include all)",
+                category_values,
+                key=f"adaptive_filter_category_values_{_clean_name(base_name)}"
+            )
+            if selected_categories:
+                filtered = filtered.loc[
+                    filtered[category_col].astype(str).isin(selected_categories)
+                ].copy()
+
+    working = filtered
+    if working.empty:
+        st.warning("No records match the selected filters. Adjust the filters to continue.")
+        return
+    st.caption(
+        f"Analysis rows: {len(working):,} of {unfiltered_rows:,} "
+        f"({len(working) / max(1, unfiltered_rows) * 100:.1f}% retained)."
+    )
+
     profile = _profile_table(working)
     date_options, numeric_options, category_options = profile["dates"], profile["numeric"], profile["categorical"]
     domain = _domain_summary(working)
