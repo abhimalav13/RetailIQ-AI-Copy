@@ -546,6 +546,80 @@ def _generate_business_insights(frame, roles):
     return insights
 
 
+
+def _generate_business_recommendations(frame, roles):
+    """Create transparent, rule-based actions from validated business roles."""
+    recommendations = []
+    measure_col = roles.get("Revenue / Sales") or roles.get("Quantity / Units")
+    category_col = roles.get("Category") or roles.get("Product") or roles.get("Geography")
+    date_col = roles.get("Date / Timestamp")
+    rating_col = roles.get("Rating / Review")
+    shipping_col = roles.get("Shipping / Delivery time")
+    churn_col = roles.get("Churn / Attrition")
+
+    if measure_col and category_col:
+        values = pd.to_numeric(frame[measure_col], errors="coerce")
+        grouped = pd.DataFrame({"group": frame[category_col].astype("string"), "value": values}).dropna()
+        totals = grouped.groupby("group")["value"].sum().sort_values(ascending=False)
+        grand_total = float(totals.sum()) if not totals.empty else 0.0
+        if len(totals) >= 2 and grand_total > 0:
+            share = float(totals.iloc[0]) / grand_total * 100
+            if share >= 60:
+                recommendations.append(("High", "Reduce dependence on the leading group",
+                    f"{totals.index[0]} contributes {share:.1f}% of grouped {measure_col}. Review concentration risk and test ways to grow other groups."))
+            elif share >= 40:
+                recommendations.append(("Medium", "Monitor group concentration",
+                    f"{totals.index[0]} contributes {share:.1f}% of grouped {measure_col}. Track its performance alongside the next-largest groups."))
+
+    if measure_col and date_col:
+        dates = pd.to_datetime(frame[date_col], errors="coerce")
+        vals = pd.to_numeric(frame[measure_col], errors="coerce")
+        trend = pd.DataFrame({"date": dates, "value": vals}).dropna()
+        if not trend.empty:
+            monthly = trend.set_index("date")["value"].resample("MS").sum()
+            if len(monthly) >= 2 and float(monthly.iloc[0]) != 0:
+                change = (float(monthly.iloc[-1]) - float(monthly.iloc[0])) / abs(float(monthly.iloc[0])) * 100
+                if change <= -10:
+                    recommendations.append(("High", "Investigate the downward trend",
+                        f"{measure_col} is down {abs(change):.1f}% from the first to the latest month in the data. Compare product, market, pricing and campaign segments to identify possible drivers."))
+                elif change >= 10:
+                    recommendations.append(("Medium", "Understand and sustain recent growth",
+                        f"{measure_col} is up {change:.1f}% from the first to the latest month in the data. Identify the groups contributing most and check inventory or operational capacity."))
+
+    if rating_col:
+        ratings = pd.to_numeric(frame[rating_col], errors="coerce").dropna()
+        if len(ratings) and ratings.mean() <= 3.0:
+            recommendations.append(("High", "Review customer experience signals",
+                f"Average {rating_col} is {ratings.mean():.2f}. Segment low scores by product, category or market and review feedback before choosing corrective actions."))
+
+    if shipping_col:
+        shipping = pd.to_numeric(frame[shipping_col], errors="coerce").dropna()
+        if len(shipping) and shipping.mean() > 7:
+            recommendations.append(("Medium", "Review delivery lead times",
+                f"Average {shipping_col} is {shipping.mean():.1f}. Compare delivery times by carrier, region or product where those fields are available."))
+
+    if churn_col:
+        raw = frame[churn_col].dropna()
+        normalized = raw.astype(str).str.strip().str.lower()
+        positive = normalized.isin(["1", "true", "yes", "y", "churn", "churned", "exited", "left"])
+        negative = normalized.isin(["0", "false", "no", "n", "active", "retained", "stayed"])
+        valid = positive | negative
+        if valid.any():
+            rate = positive[valid].mean() * 100
+            if rate >= 20:
+                recommendations.append(("High", "Examine churn or attrition segments",
+                    f"The detected positive churn/attrition rate is {rate:.1f}% among recognizable records. Compare cohorts and customer or employee segments; this rate alone does not explain why people leave."))
+
+    missing_pct = float(frame.isna().sum().sum()) / max(1, frame.size) * 100
+    if missing_pct >= 10:
+        recommendations.append(("Medium", "Improve data completeness",
+            f"{missing_pct:.1f}% of cells are missing. Prioritize fields used in key metrics and investigate the source of missing records before making decisions."))
+
+    if not recommendations:
+        recommendations.append(("Info", "Build a baseline before acting",
+            "No strong rule-based action was triggered by the detected fields. Review the column mapping and collect enough date, category and outcome data to support deeper analysis."))
+    return recommendations
+
 def _build_data_quality_report(frame, profile):
     """Create non-destructive data-quality diagnostics; never alter source rows."""
     rows = []
@@ -900,6 +974,26 @@ def _render_adaptive_workspace(tables):
             "There are not enough high-confidence business fields to generate automated insights. "
             "Review the suggested column mapping or use the manual explorer."
         )
+
+    st.subheader("Business Advisor — Recommended Actions")
+    st.caption(
+        "Recommendations use transparent rules and validated columns in this dataset. "
+        "They are prompts for investigation, not causal conclusions or guaranteed predictions."
+    )
+    business_recommendations = _generate_business_recommendations(working, validated_roles)
+    for priority, heading, detail in business_recommendations:
+        with st.container(border=True):
+            p1, p2 = st.columns([1, 5])
+            with p1:
+                if priority == "High":
+                    st.error("High priority")
+                elif priority == "Medium":
+                    st.warning("Medium priority")
+                else:
+                    st.info("Guidance")
+            with p2:
+                st.markdown(f"**{heading}**")
+                st.write(detail)
 
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
