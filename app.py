@@ -836,6 +836,186 @@ def _calculate_customer_cohorts(frame, roles):
     retention.columns = [f"Month {int(col)}" for col in retention.columns]
     return retention.round(1), "Retention is the share of each first-purchase cohort active in each subsequent calendar month."
 
+
+@st.cache_data(show_spinner=False)
+def _train_churn_classification(frame, roles):
+    """Train a transparent logistic classifier when a valid binary churn target exists."""
+    target_col = roles.get("Churn / Attrition")
+    if not target_col:
+        return None, "No high-confidence churn/attrition target was detected."
+
+    raw_target = frame[target_col]
+    normalized = raw_target.astype(str).str.strip().str.lower()
+    positive_values = {"1", "true", "yes", "y", "churn", "churned", "exited", "left"}
+    negative_values = {"0", "false", "no", "n", "active", "retained", "stay", "stayed"}
+    recognized = normalized.isin(positive_values | negative_values)
+    data = frame.loc[recognized].copy()
+    y = normalized.loc[recognized].isin(positive_values).astype(int).to_numpy()
+
+    if len(data) < 40 or len(np.unique(y)) != 2:
+        return None, "At least 40 records with both recognizable churn and non-churn outcomes are required."
+    class_counts = np.bincount(y, minlength=2)
+    if class_counts.min() < 8:
+        return None, "At least 8 examples from each outcome class are required for a meaningful holdout evaluation."
+
+    excluded = {
+        target_col,
+        roles.get("Customer"),
+        roles.get("Order / Transaction ID"),
+        roles.get("Date / Timestamp"),
+    }
+    candidate_cols = [
+        col for col in data.columns
+        if col not in excluded
+        and not _is_identifier_name(col)
+        and data[col].nunique(dropna=True) > 1
+    ]
+    feature_parts = []
+    feature_names = []
+    for col in candidate_cols:
+        series = data[col]
+        numeric = pd.to_numeric(series, errors="coerce")
+        nonmissing = int(series.notna().sum())
+        numeric_ratio = numeric.notna().sum() / max(1, nonmissing)
+        if pd.api.types.is_numeric_dtype(series) or numeric_ratio >= 0.85:
+            values = numeric.replace([np.inf, -np.inf], np.nan)
+            if values.notna().sum() < 10:
+                continue
+            median = float(values.median())
+            values = values.fillna(median).to_numpy(dtype=float)
+            feature_parts.append(values.reshape(-1, 1))
+            feature_names.append(str(col))
+        else:
+            unique_count = series.nunique(dropna=True)
+            if 2 <= unique_count <= 12:
+                filled = series.fillna("Missing").astype(str)
+                dummies = pd.get_dummies(filled, prefix=str(col), dtype=float)
+                if dummies.shape[1] > 12:
+                    continue
+                feature_parts.append(dummies.to_numpy(dtype=float))
+                feature_names.extend(dummies.columns.astype(str).tolist())
+
+    if not feature_parts:
+        return None, "No suitable numeric or low-cardinality categorical predictor columns were found."
+    X = np.concatenate(feature_parts, axis=1)
+    if X.shape[1] > 60:
+        return None, "More than 60 candidate features were detected. Reduce categorical complexity before modelling."
+    if not np.isfinite(X).all():
+        return None, "Some predictor values could not be prepared safely for modelling."
+
+    # Stratified, deterministic holdout split.
+    rng = np.random.default_rng(42)
+    train_indices, test_indices = [], []
+    for label in (0, 1):
+        indices = np.where(y == label)[0]
+        rng.shuffle(indices)
+        split_at = max(1, min(len(indices) - 1, int(len(indices) * 0.8)))
+        train_indices.extend(indices[:split_at].tolist())
+        test_indices.extend(indices[split_at:].tolist())
+    train_indices = np.array(train_indices, dtype=int)
+    test_indices = np.array(test_indices, dtype=int)
+    if len(test_indices) < 4:
+        return None, "The holdout set is too small to evaluate this model."
+
+    x_train, x_test = X[train_indices], X[test_indices]
+    y_train, y_test = y[train_indices], y[test_indices]
+    means = x_train.mean(axis=0)
+    scales = x_train.std(axis=0)
+    scales[scales == 0] = 1.0
+    x_train = np.clip((x_train - means) / scales, -8, 8)
+    x_test = np.clip((x_test - means) / scales, -8, 8)
+    x_train = np.column_stack([np.ones(len(x_train)), x_train])
+    x_test = np.column_stack([np.ones(len(x_test)), x_test])
+
+    # Balanced logistic regression trained with gradient descent and L2 regularization.
+    weights = np.zeros(x_train.shape[1], dtype=float)
+    positive_weight = len(y_train) / (2 * max(1, int(y_train.sum())))
+    negative_weight = len(y_train) / (2 * max(1, int((y_train == 0).sum())))
+    sample_weights = np.where(y_train == 1, positive_weight, negative_weight)
+    learning_rate = 0.08
+    for _ in range(1200):
+        logits = np.clip(x_train @ weights, -30, 30)
+        probabilities = 1.0 / (1.0 + np.exp(-logits))
+        gradient = (x_train.T @ ((probabilities - y_train) * sample_weights)) / len(y_train)
+        gradient[1:] += 0.01 * weights[1:]
+        weights -= learning_rate * gradient
+
+    test_probabilities = 1.0 / (1.0 + np.exp(-np.clip(x_test @ weights, -30, 30)))
+    predictions = (test_probabilities >= 0.5).astype(int)
+    tp = int(((predictions == 1) & (y_test == 1)).sum())
+    tn = int(((predictions == 0) & (y_test == 0)).sum())
+    fp = int(((predictions == 1) & (y_test == 0)).sum())
+    fn = int(((predictions == 0) & (y_test == 1)).sum())
+    accuracy = (tp + tn) / max(1, len(y_test))
+    precision = tp / max(1, tp + fp)
+    recall = tp / max(1, tp + fn)
+    f1 = 2 * precision * recall / max(1e-12, precision + recall)
+
+    # AUC by pairwise ranking; safe for the small holdout used here.
+    positives = test_probabilities[y_test == 1]
+    negatives = test_probabilities[y_test == 0]
+    auc = float(np.mean([
+        (pos > neg) + 0.5 * (pos == neg)
+        for pos in positives for neg in negatives
+    ])) if len(positives) and len(negatives) else float("nan")
+
+    result = {
+        "accuracy": accuracy, "precision": precision, "recall": recall,
+        "f1": f1, "auc": auc, "tp": tp, "tn": tn, "fp": fp, "fn": fn,
+        "features": feature_names, "records": len(data),
+        "test_records": len(test_indices),
+        "baseline_rate": float(y_test.mean()),
+    }
+    return result, "A deterministic logistic-regression model was evaluated on a stratified 20% holdout set. Metrics are estimates, not guarantees of future performance."
+
+
+@st.cache_data(show_spinner=False)
+def _evaluate_time_series_forecast(series):
+    """Backtest an additive trend model on the last 20% of daily observations."""
+    values = pd.to_numeric(series, errors="coerce").dropna().astype(float)
+    if len(values) < 35:
+        return None, "At least 35 daily observations are required for a holdout backtest."
+    holdout_size = max(7, int(round(len(values) * 0.2)))
+    if len(values) - holdout_size < 28:
+        holdout_size = len(values) - 28
+    train, actual = values.iloc[:-holdout_size], values.iloc[-holdout_size:]
+    if len(train) < 28 or len(actual) < 7:
+        return None, "There are not enough observations for a reliable holdout evaluation."
+    try:
+        seasonal = len(train) >= 60
+        fitted = ExponentialSmoothing(
+            train, trend="add", seasonal="add" if seasonal else None,
+            seasonal_periods=7 if seasonal else None, initialization_method="estimated"
+        ).fit()
+        predicted = np.asarray(fitted.forecast(len(actual)), dtype=float)
+        observed = actual.to_numpy(dtype=float)
+        errors = observed - predicted
+        mae = float(np.mean(np.abs(errors)))
+        rmse = float(np.sqrt(np.mean(errors ** 2)))
+        nonzero = np.abs(observed) > 1e-9
+        mape = float(np.mean(np.abs(errors[nonzero] / observed[nonzero])) * 100) if nonzero.any() else float("nan")
+        return {
+            "mae": mae, "rmse": rmse, "mape": mape,
+            "actual": actual, "predicted": pd.Series(predicted, index=actual.index),
+            "holdout_size": len(actual),
+        }, "Backtest compares predictions with the most recent held-out observations; it does not guarantee future accuracy."
+    except Exception as exc:
+        return None, f"Backtest could not be completed: {exc}"
+
+
+@st.cache_data(show_spinner=False)
+def _forecast_from_daily_series(series, horizon=30):
+    """Fit the existing additive Exponential Smoothing approach and forecast future periods."""
+    values = pd.to_numeric(series, errors="coerce").dropna().astype(float)
+    if len(values) < 28:
+        return pd.Series(dtype=float)
+    seasonal = len(values) >= 60
+    fitted = ExponentialSmoothing(
+        values, trend="add", seasonal="add" if seasonal else None,
+        seasonal_periods=7 if seasonal else None, initialization_method="estimated"
+    ).fit()
+    return fitted.forecast(horizon)
+
 def _validated_role_columns(frame):
     """Return high-confidence semantic matches that passed basic type validation."""
     mapping = _semantic_column_mapping(frame)
@@ -1216,6 +1396,79 @@ def _render_adaptive_workspace(tables):
         )
     else:
         st.caption(cohort_note)
+
+    st.subheader("Predictive Analytics — Churn & Sales Forecast")
+    st.caption(
+        "Models are shown only when the uploaded dataset contains suitable validated fields. "
+        "Review holdout metrics before using predictions in business decisions."
+    )
+
+    churn_result, churn_note = _train_churn_classification(working, validated_roles)
+    if churn_result:
+        st.markdown("**Customer / employee churn classification**")
+        st.caption(churn_note)
+        churn_metrics = st.columns(5)
+        churn_metrics[0].metric("Accuracy", f"{churn_result['accuracy'] * 100:.1f}%")
+        churn_metrics[1].metric("Precision", f"{churn_result['precision'] * 100:.1f}%")
+        churn_metrics[2].metric("Recall", f"{churn_result['recall'] * 100:.1f}%")
+        churn_metrics[3].metric("F1 score", f"{churn_result['f1']:.3f}")
+        churn_metrics[4].metric("ROC AUC", f"{churn_result['auc']:.3f}" if np.isfinite(churn_result["auc"]) else "—")
+        st.write(
+            f"Evaluated {churn_result['test_records']:,} holdout records from "
+            f"{churn_result['records']:,} labelled records using {len(churn_result['features']):,} features."
+        )
+        st.write(
+            f"Confusion matrix counts — true positives: {churn_result['tp']:,}, "
+            f"true negatives: {churn_result['tn']:,}, false positives: {churn_result['fp']:,}, "
+            f"false negatives: {churn_result['fn']:,}."
+        )
+        st.caption("This model estimates patterns in historical labelled data. It does not establish causes or guarantee that an individual will churn.")
+    else:
+        st.info(f"Churn model unavailable: {churn_note}")
+
+    predictive_date = validated_roles.get("Date / Timestamp")
+    predictive_revenue = validated_roles.get("Revenue / Sales")
+    if predictive_date and predictive_revenue:
+        forecast_input = working[[predictive_date, predictive_revenue]].copy()
+        forecast_input[predictive_date] = pd.to_datetime(forecast_input[predictive_date], errors="coerce")
+        forecast_input[predictive_revenue] = pd.to_numeric(forecast_input[predictive_revenue], errors="coerce")
+        forecast_input = forecast_input.dropna()
+        if not forecast_input.empty:
+            daily_sales = forecast_input.set_index(predictive_date)[predictive_revenue].resample("D").sum()
+            if len(daily_sales) >= 35:
+                st.markdown("**Sales forecast with holdout evaluation**")
+                backtest, backtest_note = _evaluate_time_series_forecast(daily_sales)
+                if backtest:
+                    eval_cols = st.columns(3)
+                    eval_cols[0].metric("Holdout MAE", f"{backtest['mae']:,.2f}")
+                    eval_cols[1].metric("Holdout RMSE", f"{backtest['rmse']:,.2f}")
+                    eval_cols[2].metric("Holdout MAPE", f"{backtest['mape']:.1f}%" if np.isfinite(backtest["mape"]) else "—")
+                    comparison = pd.DataFrame({
+                        "Date": backtest["actual"].index,
+                        "Actual": backtest["actual"].values,
+                        "Predicted": backtest["predicted"].values,
+                    })
+                    st.plotly_chart(
+                        px.line(comparison, x="Date", y=["Actual", "Predicted"],
+                                title="Forecast backtest: actual vs predicted", template="plotly_white"),
+                        use_container_width=True, key=f"adaptive_forecast_backtest_{_clean_name(base_name)}"
+                    )
+                    st.caption(backtest_note)
+                try:
+                    future = _forecast_from_daily_series(daily_sales, 30)
+                    future_frame = pd.DataFrame({"Date": future.index, "Forecast sales": future.values})
+                    st.metric("Next 30-day forecast", f"{future.sum():,.2f}")
+                    st.plotly_chart(
+                        px.line(future_frame, x="Date", y="Forecast sales", markers=True,
+                                title="Next 30 days — forecast", template="plotly_white"),
+                        use_container_width=True, key=f"adaptive_forecast_future_{_clean_name(base_name)}"
+                    )
+                except Exception as exc:
+                    st.warning(f"Future sales forecast could not be generated: {exc}")
+            else:
+                st.info("Sales forecasting needs at least 35 daily observations for backtesting.")
+    else:
+        st.info("Adaptive sales forecasting needs high-confidence Date and Revenue/Sales columns.")
 
     st.subheader("Export Business Report")
     st.caption(
@@ -2895,6 +3148,25 @@ elif page == "Sales Forecast":
             )
 
             fitted = model.fit()
+
+            # Hold out the most recent observations to report historical forecast error.
+            backtest, backtest_note = _evaluate_time_series_forecast(daily)
+            if backtest:
+                eval_cols = st.columns(3)
+                eval_cols[0].metric("Holdout MAE", f"{backtest['mae']:,.2f}")
+                eval_cols[1].metric("Holdout RMSE", f"{backtest['rmse']:,.2f}")
+                eval_cols[2].metric("Holdout MAPE", f"{backtest['mape']:.1f}%" if np.isfinite(backtest["mape"]) else "—")
+                st.caption(backtest_note)
+                comparison = pd.DataFrame({
+                    "Date": backtest["actual"].index,
+                    "Actual Revenue": backtest["actual"].values,
+                    "Predicted Revenue": backtest["predicted"].values,
+                })
+                st.plotly_chart(
+                    px.line(comparison, x="Date", y=["Actual Revenue", "Predicted Revenue"],
+                            title="Forecast backtest: actual vs predicted", template="plotly_white"),
+                    use_container_width=True
+                )
 
             forecast = fitted.forecast(30)
 
