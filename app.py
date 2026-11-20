@@ -388,6 +388,83 @@ def _find_column(frame, aliases):
     return None
 
 
+def _semantic_column_mapping(frame):
+    """Suggest business roles from common column-name synonyms, with type checks."""
+    role_aliases = {
+        "Revenue / Sales": ["revenue", "sales", "netsales", "totalsales", "salesamount",
+                            "revenueamount", "orderamount", "totalamount", "amountpaid",
+                            "netamount", "grosssales", "orderitemtotal"],
+        "Unit price": ["unitprice", "priceperunit", "sellingprice", "saleprice",
+                       "itemprice", "productprice", "price"],
+        "Quantity / Units": ["quantity", "qty", "unitssold", "itemsquantity",
+                             "numberofitems", "orderquantity", "units"],
+        "Order / Transaction ID": ["orderid", "orderno", "ordernumber", "invoiceno",
+                                   "invoiceid", "transactionid", "purchaseid"],
+        "Product": ["productname", "product", "productid", "sku", "stockcode",
+                    "itemname", "itemcode", "productcode"],
+        "Customer": ["customerid", "customeruniqueid", "customername", "clientid",
+                     "buyerid", "userid"],
+        "Date / Timestamp": ["orderdate", "invoicedate", "transactiondate",
+                             "purchasedate", "createdat", "timestamp", "date"],
+        "Geography": ["country", "region", "state", "city", "market", "geography",
+                      "province", "postalcode", "zipcode"],
+        "Category": ["category", "productcategory", "department", "segment",
+                     "producttype", "itemcategory"],
+        "Status": ["orderstatus", "deliverystatus", "paymentstatus", "status",
+                   "shippingstatus"],
+        "Rating / Review": ["reviewscore", "rating", "customerrating",
+                            "feedbackscore", "satisfaction", "stars"],
+        "Shipping / Delivery time": ["shippingdays", "deliverydays", "actualshippingdays",
+                                     "daysforshipping", "leadtime", "transittime"],
+        "Churn / Attrition": ["churn", "churned", "ischurn", "exited",
+                              "attrition", "employeeattrition", "leftcompany"],
+    }
+    numeric_roles = {"Revenue / Sales", "Unit price", "Quantity / Units",
+                     "Rating / Review", "Shipping / Delivery time"}
+    mappings = []
+    normalized_columns = {col: _clean_name(col) for col in frame.columns}
+    for role, aliases in role_aliases.items():
+        candidates = []
+        for col, normalized in normalized_columns.items():
+            if normalized in aliases:
+                score, reason = 1.0, "Exact synonym"
+            elif any(len(alias) >= 5 and (normalized.startswith(alias) or normalized.endswith(alias))
+                     for alias in aliases):
+                score, reason = 0.82, "Name variation"
+            else:
+                continue
+            if role in numeric_roles:
+                converted = pd.to_numeric(frame[col], errors="coerce")
+                nonmissing = int(frame[col].notna().sum())
+                ratio = converted.notna().sum() / nonmissing if nonmissing else 0
+                if ratio < 0.70:
+                    continue
+            if role == "Date / Timestamp":
+                parsed = pd.to_datetime(frame[col], errors="coerce")
+                nonmissing = int(frame[col].notna().sum())
+                ratio = parsed.notna().sum() / nonmissing if nonmissing else 0
+                if ratio < 0.65:
+                    continue
+            candidates.append((score, col, reason))
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        if candidates:
+            best_score, best_col, reason = candidates[0]
+            ambiguous = len(candidates) > 1 and candidates[1][0] == best_score
+            mappings.append({
+                "Business role": role,
+                "Suggested column": str(best_col),
+                "Confidence": "Review — multiple matches" if ambiguous else
+                              ("High" if best_score >= 1 else "Medium"),
+                "Match basis": reason
+            })
+        else:
+            mappings.append({
+                "Business role": role, "Suggested column": "Not detected",
+                "Confidence": "Unavailable", "Match basis": "No validated synonym found"
+            })
+    return mappings
+
+
 def _truthy_mask(series):
     """Interpret common binary/text outcomes without assuming a particular encoding."""
     text = series.astype(str).str.strip().str.lower()
@@ -594,6 +671,14 @@ def _render_adaptive_workspace(tables):
         profile_rows.append({"Column": str(col), "Detected type": detected,
                              "Missing": profile["missing"][col], "Unique values": profile["unique"][col]})
     st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+
+    st.subheader("Suggested business column mapping")
+    st.caption(
+        "RetailIQ matches common naming variations to business concepts. "
+        "These are suggestions only; confirm them before using a field in calculations."
+    )
+    semantic_mapping = pd.DataFrame(_semantic_column_mapping(working))
+    st.dataframe(semantic_mapping, use_container_width=True, hide_index=True)
 
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
