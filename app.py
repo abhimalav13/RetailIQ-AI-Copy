@@ -1056,6 +1056,40 @@ def _render_adaptive_workspace(tables):
         use_container_width=True,
     )
 
+    st.subheader("Export Data Dictionary")
+    st.caption(
+        "Download a CSV reference for the selected dataset, including detected column types, "
+        "missing-value rates, unique-value counts and suggested business roles."
+    )
+    role_lookup = {}
+    for mapping_row in semantic_mapping_rows:
+        suggested = mapping_row["Suggested column"]
+        if suggested != "Not detected":
+            role_lookup.setdefault(suggested, []).append(
+                f"{mapping_row['Business role']} ({mapping_row['Confidence']})"
+            )
+    dictionary_rows = []
+    for row in profile_rows:
+        missing_count = int(row["Missing"])
+        dictionary_rows.append({
+            "Column": row["Column"],
+            "Detected type": row["Detected type"],
+            "Missing values": missing_count,
+            "Missing %": round(missing_count / max(1, len(working)) * 100, 2),
+            "Unique values": int(row["Unique values"]),
+            "Suggested business role": "; ".join(role_lookup.get(row["Column"], [])) or "Not detected",
+        })
+    dictionary_csv = pd.DataFrame(dictionary_rows).to_csv(index=False)
+    dictionary_filename = f"{_clean_name(str(base_name)) or 'retailiq'}_data_dictionary.csv"
+    st.download_button(
+        "Download Data Dictionary (CSV)",
+        data=dictionary_csv,
+        file_name=dictionary_filename,
+        mime="text/csv",
+        key=f"data_dictionary_{_clean_name(str(base_name))}",
+        use_container_width=True,
+    )
+
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
     detected_features = _detect_dataset_features(working)
