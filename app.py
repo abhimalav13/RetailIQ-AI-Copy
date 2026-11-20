@@ -1785,10 +1785,28 @@ elif page == "Product Intelligence":
 
     top_products = products.head(10).copy()
 
+    # Olist product IDs are long UUID-like values, not human-readable names.
+    # Use a compact display label in charts while retaining the full ID for hover/table.
+    product_ids_as_labels = bool(
+        is_olist_upload
+        and raw_df["Description"].astype(str).reset_index(drop=True).equals(
+            raw_df["StockCode"].astype(str).reset_index(drop=True)
+        )
+    )
+    if product_ids_as_labels:
+        products["Product ID"] = products["Description"].astype(str)
+        products["Display Product"] = products["Product ID"].apply(
+            lambda value: f"Product · {value[:10]}…"
+        )
+        top_products = products.head(10).copy()
+        chart_product_col = "Display Product"
+    else:
+        chart_product_col = "Description"
+
     fig = px.bar(
         top_products.sort_values("Revenue"),
         x="Revenue",
-        y="Description",
+        y=chart_product_col,
         orientation="h",
         color="Revenue",
         color_continuous_scale=["#14B8A6", "#14213D"],
@@ -1824,6 +1842,7 @@ elif page == "Product Intelligence":
     st.subheader("Product Revenue Contribution")
 
     product_donut = products.head(8).copy()
+    donut_label_col = chart_product_col
 
     if len(products) > 8:
 
@@ -1834,7 +1853,8 @@ elif page == "Product Intelligence":
                 product_donut,
                 pd.DataFrame({
                     "Description": ["Other Products"],
-                    "Revenue": [other_revenue]
+                    "Revenue": [other_revenue],
+                    **({"Display Product": ["Other Products"]} if product_ids_as_labels else {})
                 })
             ],
             ignore_index=True
@@ -1842,7 +1862,7 @@ elif page == "Product Intelligence":
 
     fig2 = px.pie(
         product_donut,
-        names="Description",
+        names=donut_label_col,
         values="Revenue",
         hole=0.58,
         color_discrete_sequence=[
@@ -1884,7 +1904,7 @@ elif page == "Product Intelligence":
     fig3 = px.bar(
         quantity_top,
         x="Units",
-        y="Description",
+        y=chart_product_col,
         orientation="h",
         color_discrete_sequence=[teal],
         template="plotly_white"
@@ -1909,6 +1929,17 @@ elif page == "Product Intelligence":
     st.subheader("Complete Product Performance")
 
     display_products = products.copy()
+    if product_ids_as_labels:
+        display_products = display_products.rename(
+            columns={"Display Product": "Product"}
+        )
+        display_products = display_products[
+            ["Product", "Product ID", "Revenue", "Units", "Orders"]
+        ]
+    else:
+        display_products = display_products.rename(
+            columns={"Description": "Product"}
+        )
 
     display_products["Revenue"] = (
         display_products["Revenue"].apply(
