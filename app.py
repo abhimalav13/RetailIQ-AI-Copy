@@ -397,15 +397,52 @@ def _truthy_mask(series):
 def _domain_summary(frame):
     cols = {_clean_name(c): c for c in frame.columns}
     has = lambda *names: any(_clean_name(n) in cols for n in names)
-    if has("Attrition") and (has("Department") or has("JobRole")):
+    if has("Attrition", "EmployeeAttrition", "LeftCompany") and (
+        has("Department", "JobRole", "EmployeeDepartment")
+    ):
         return "HR / Employee Analytics"
-    if has("Exited", "Churn") and (has("CreditScore") or has("Balance") or has("Geography")):
+    if has("Exited", "Churn", "Churned", "IsChurn") and (
+        has("CreditScore", "Balance", "Geography", "AccountBalance")
+    ):
         return "Banking / Customer Churn"
-    if has("Late_delivery_risk", "Delivery Status", "Days for shipping (real)"):
+    if has("Late_delivery_risk", "LateDeliveryRisk", "Delivery Status",
+           "Days for shipping (real)", "ShippingDays", "ActualShippingDays"):
         return "Supply Chain / Logistics"
-    if has("InvoiceNo", "StockCode", "Quantity", "UnitPrice"):
+    if has("InvoiceNo", "Invoice", "OrderID", "TransactionID") and (
+        has("StockCode", "ProductID", "SKU", "ItemCode")
+    ) and has("Quantity", "Qty", "UnitsSold") and has("UnitPrice", "Price", "SellingPrice"):
         return "Retail Transactions"
     return "General Dataset Analytics"
+
+
+def _detect_dataset_features(frame):
+    """Identify which business analyses are supported by the columns actually uploaded."""
+    aliases = {
+        "Sales / revenue": ["Sales", "Revenue", "Amount", "OrderSales", "OrderItemTotal", "TotalAmount"],
+        "Date trends": ["InvoiceDate", "OrderDate", "TransactionDate", "PurchaseDate", "Date", "Timestamp"],
+        "Product analysis": ["Product", "ProductName", "ProductID", "SKU", "StockCode", "ItemCode"],
+        "Customer analysis": ["CustomerID", "CustomerId", "CustomerName", "ClientID", "CustomerUniqueID"],
+        "Geographic analysis": ["Country", "Region", "State", "City", "Market", "Geography", "PostalCode"],
+        "Shipping analysis": ["ShippingDays", "ActualShippingDays", "DeliveryStatus", "LateDeliveryRisk", "ShipDate"],
+        "Reviews / satisfaction": ["ReviewScore", "Rating", "Satisfaction", "CustomerRating", "FeedbackScore"],
+        "Churn / retention": ["Churn", "Churned", "Exited", "Attrition", "EmployeeAttrition", "LeftCompany"],
+        "Employee analysis": ["EmployeeID", "EmployeeNumber", "Department", "JobRole", "MonthlyIncome"],
+    }
+    cols = {_clean_name(c) for c in frame.columns}
+    detected = []
+    for feature, names in aliases.items():
+        found = any(_clean_name(name) in cols for name in names)
+        if feature == "Date trends":
+            found = found or any(
+                any(token in _clean_name(c) for token in ("date", "timestamp", "datetime"))
+                for c in frame.columns
+            )
+        if feature == "Sales / revenue":
+            found = found or any(
+                _clean_name(c) in {"unitprice", "priceperunit"} for c in frame.columns
+            )
+        detected.append((feature, found))
+    return detected
 
 
 def _render_domain_kpis(frame, domain):
@@ -557,6 +594,20 @@ def _render_adaptive_workspace(tables):
         profile_rows.append({"Column": str(col), "Detected type": detected,
                              "Missing": profile["missing"][col], "Unique values": profile["unique"][col]})
     st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+
+    st.subheader("Automatically detected analysis features")
+    st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
+    detected_features = _detect_dataset_features(working)
+    available_features = [name for name, available in detected_features if available]
+    feature_cols = st.columns(3)
+    for idx, (feature_name, is_available) in enumerate(detected_features):
+        target_col = feature_cols[idx % 3]
+        if is_available:
+            target_col.success(f"Available · {feature_name}")
+        else:
+            target_col.info(f"Not detected · {feature_name}")
+    if not available_features:
+        st.warning("No standard business features were recognized. You can still explore the detected columns manually.")
 
     total_cells = max(1, len(working) * len(working.columns))
     missing_cells = int(working.isna().sum().sum())
