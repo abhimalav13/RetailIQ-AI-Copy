@@ -39,6 +39,44 @@ st.markdown("""
     background-color: #14213D;
 }
 
+/* Batch 12.1: keep sidebar panels and controls readable on the navy background. */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background-color: #1E3153 !important;
+    border: 1px solid rgba(255,255,255,0.22) !important;
+    border-radius: 10px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary *,
+[data-testid="stSidebar"] [data-testid="stExpander"] p,
+[data-testid="stSidebar"] [data-testid="stExpander"] span,
+[data-testid="stSidebar"] [data-testid="stExpander"] label,
+[data-testid="stSidebar"] [data-testid="stExpander"] div {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stMetric"] {
+    background-color: #263B60 !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stMetricLabel"],
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stMetricValue"] {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] [data-testid="stDownloadButton"] button,
+[data-testid="stSidebar"] .stDownloadButton button {
+    background-color: #00A6A6 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #00A6A6 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] input,
+[data-testid="stSidebar"] [data-baseweb="select"] div,
+[data-testid="stSidebar"] [data-baseweb="select"] span {
+    color: #14213D !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section * {
+    color: #14213D !important;
+}
+
 
 /* Sidebar background */
 [data-testid="stSidebar"] {
