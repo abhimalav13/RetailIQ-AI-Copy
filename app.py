@@ -731,6 +731,111 @@ def _recommend_chart_types(frame, profile, roles):
     return recommendations
 
 
+
+@st.cache_data(show_spinner=False)
+def _calculate_rfm_analysis(frame, roles):
+    """Build customer-level Recency, Frequency and Monetary metrics from validated fields."""
+    customer_col = roles.get("Customer")
+    date_col = roles.get("Date / Timestamp")
+    revenue_col = roles.get("Revenue / Sales")
+    order_col = roles.get("Order / Transaction ID")
+
+    if not all([customer_col, date_col, revenue_col]):
+        return pd.DataFrame(), "RFM needs validated Customer, Date and Revenue/Sales columns."
+
+    columns = [customer_col, date_col, revenue_col]
+    if order_col and order_col not in columns:
+        columns.append(order_col)
+    data = frame[columns].copy()
+    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    data[revenue_col] = pd.to_numeric(data[revenue_col], errors="coerce")
+    data = data.dropna(subset=[customer_col, date_col, revenue_col])
+    if data.empty:
+        return pd.DataFrame(), "No valid customer, date and revenue records were available."
+
+    data = data[data[revenue_col] >= 0]
+    if data.empty:
+        return pd.DataFrame(), "No non-negative revenue records were available for RFM analysis."
+
+    snapshot_date = data[date_col].max().normalize() + pd.Timedelta(days=1)
+    grouped = data.groupby(customer_col, dropna=False)
+    rfm = grouped.agg(
+        Last_purchase=(date_col, "max"),
+        Monetary=(revenue_col, "sum"),
+        Transactions=(date_col, "size"),
+    ).reset_index()
+    if order_col:
+        frequency = data.groupby(customer_col, dropna=False)[order_col].nunique(dropna=True)
+        rfm["Frequency"] = rfm[customer_col].map(frequency).fillna(0).astype(int)
+        frequency_note = f"Frequency counts distinct values in '{order_col}'."
+    else:
+        rfm["Frequency"] = rfm["Transactions"]
+        frequency_note = "No validated order ID was found; frequency uses transaction rows as a proxy."
+
+    rfm["Recency (days)"] = (snapshot_date - rfm["Last_purchase"]).dt.days
+    rfm["Monetary"] = rfm["Monetary"].astype(float)
+    if len(rfm) >= 2:
+        rfm["R_score"] = pd.qcut(
+            rfm["Recency (days)"].rank(method="first", ascending=False),
+            5, labels=[5, 4, 3, 2, 1]
+        ).astype(int)
+        rfm["F_score"] = pd.qcut(
+            rfm["Frequency"].rank(method="first"),
+            5, labels=[1, 2, 3, 4, 5]
+        ).astype(int)
+        rfm["M_score"] = pd.qcut(
+            rfm["Monetary"].rank(method="first"),
+            5, labels=[1, 2, 3, 4, 5]
+        ).astype(int)
+    else:
+        rfm["R_score"] = 3
+        rfm["F_score"] = 3
+        rfm["M_score"] = 3
+
+    rfm["RFM_score"] = rfm[["R_score", "F_score", "M_score"]].sum(axis=1)
+    rfm["Segment"] = np.select(
+        [
+            rfm["RFM_score"] >= 13,
+            rfm["RFM_score"].between(10, 12),
+            rfm["RFM_score"].between(8, 9),
+            rfm["RFM_score"].between(6, 7),
+        ],
+        ["Champions", "Loyal customers", "Potential loyalists", "At risk"],
+        default="Hibernating"
+    )
+    return rfm, frequency_note
+
+
+@st.cache_data(show_spinner=False)
+def _calculate_customer_cohorts(frame, roles):
+    """Calculate monthly customer cohorts and their subsequent active-month retention."""
+    customer_col = roles.get("Customer")
+    date_col = roles.get("Date / Timestamp")
+    if not customer_col or not date_col:
+        return pd.DataFrame(), "Cohorts need validated Customer and Date columns."
+
+    data = frame[[customer_col, date_col]].copy()
+    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    data = data.dropna(subset=[customer_col, date_col]).drop_duplicates()
+    if data.empty:
+        return pd.DataFrame(), "No valid customer-date records were available."
+
+    data["Order month"] = data[date_col].dt.to_period("M")
+    first_purchase = data.groupby(customer_col)["Order month"].min().rename("Cohort")
+    data = data.join(first_purchase, on=customer_col)
+    data["Cohort index"] = (
+        (data["Order month"].dt.year - data["Cohort"].dt.year) * 12
+        + data["Order month"].dt.month - data["Cohort"].dt.month + 1
+    )
+    cohort_counts = data.groupby(["Cohort", "Cohort index"])[customer_col].nunique().unstack(fill_value=0)
+    if cohort_counts.empty:
+        return pd.DataFrame(), "No monthly customer cohorts could be calculated."
+    cohort_sizes = cohort_counts.iloc[:, 0].replace(0, np.nan)
+    retention = cohort_counts.divide(cohort_sizes, axis=0) * 100
+    retention.index = retention.index.astype(str)
+    retention.columns = [f"Month {int(col)}" for col in retention.columns]
+    return retention.round(1), "Retention is the share of each first-purchase cohort active in each subsequent calendar month."
+
 def _validated_role_columns(frame):
     """Return high-confidence semantic matches that passed basic type validation."""
     mapping = _semantic_column_mapping(frame)
@@ -1045,6 +1150,72 @@ def _render_adaptive_workspace(tables):
             with p2:
                 st.markdown(f"**{heading}**")
                 st.write(detail)
+
+    st.subheader("Customer Intelligence — RFM & Cohort Retention")
+    st.caption(
+        "This section appears only when high-confidence customer and date fields are available. "
+        "RFM scores are relative rankings within the selected dataset; they are not churn predictions."
+    )
+    rfm_table, rfm_note = _calculate_rfm_analysis(working, validated_roles)
+    cohort_table, cohort_note = _calculate_customer_cohorts(working, validated_roles)
+
+    if not rfm_table.empty:
+        rfm_customer_col = validated_roles["Customer"]
+        rfm_kpis = st.columns(4)
+        rfm_kpis[0].metric("Customers analysed", f"{len(rfm_table):,}")
+        rfm_kpis[1].metric("Champions", f"{int((rfm_table['Segment'] == 'Champions').sum()):,}")
+        rfm_kpis[2].metric("At risk", f"{int(rfm_table['Segment'].isin(['At risk', 'Hibernating']).sum()):,}")
+        rfm_kpis[3].metric("Average monetary value", f"{rfm_table['Monetary'].mean():,.2f}")
+        st.caption(
+            f"Snapshot date: {(pd.to_datetime(working[validated_roles['Date / Timestamp']], errors='coerce').max()).date()}. "
+            + rfm_note
+        )
+        segment_summary = (
+            rfm_table.groupby("Segment", as_index=False)
+            .agg(Customers=(rfm_customer_col, "nunique"), Monetary=("Monetary", "sum"))
+            .sort_values("Customers", ascending=False)
+        )
+        rfm_cols = st.columns(2)
+        with rfm_cols[0]:
+            st.plotly_chart(
+                px.bar(segment_summary, x="Segment", y="Customers", title="Customers by RFM segment",
+                       template="plotly_white"),
+                use_container_width=True, key=f"rfm_segments_{_clean_name(base_name)}"
+            )
+        with rfm_cols[1]:
+            st.plotly_chart(
+                px.bar(segment_summary, x="Segment", y="Monetary", title="Monetary value by RFM segment",
+                       template="plotly_white"),
+                use_container_width=True, key=f"rfm_value_{_clean_name(base_name)}"
+            )
+        st.dataframe(
+            rfm_table.sort_values(["RFM_score", "Monetary"], ascending=False).head(100),
+            use_container_width=True, hide_index=True
+        )
+        rfm_csv = _cached_csv_export(rfm_table)
+        st.download_button(
+            "Download RFM Customer Segments (CSV)", data=rfm_csv,
+            file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_rfm_segments.csv",
+            mime="text/csv", key=f"rfm_download_{_clean_name(base_name)}"
+        )
+    else:
+        st.info(rfm_note)
+
+    if not cohort_table.empty:
+        st.markdown("**Monthly customer cohort retention**")
+        st.caption(cohort_note)
+        st.dataframe(
+            cohort_table.style.format("{:.1f}%").background_gradient(cmap="Blues", axis=None),
+            use_container_width=True
+        )
+        cohort_csv = cohort_table.to_csv()
+        st.download_button(
+            "Download Cohort Retention (CSV)", data=cohort_csv,
+            file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_cohort_retention.csv",
+            mime="text/csv", key=f"cohort_download_{_clean_name(base_name)}"
+        )
+    else:
+        st.caption(cohort_note)
 
     st.subheader("Export Business Report")
     st.caption(
