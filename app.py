@@ -838,6 +838,80 @@ def _calculate_customer_cohorts(frame, roles):
 
 
 @st.cache_data(show_spinner=False)
+def _calculate_advanced_customer_intelligence(frame, roles):
+    """Calculate historical customer value, repeat-purchase and revenue-concentration metrics."""
+    customer_col = roles.get("Customer")
+    revenue_col = roles.get("Revenue / Sales")
+    date_col = roles.get("Date / Timestamp")
+    order_col = roles.get("Order / Transaction ID")
+    if not customer_col or not revenue_col:
+        return None, "Advanced customer intelligence needs validated Customer and Revenue/Sales fields."
+
+    cols = [customer_col, revenue_col]
+    if date_col:
+        cols.append(date_col)
+    if order_col and order_col not in cols:
+        cols.append(order_col)
+    data = frame[cols].copy()
+    data[revenue_col] = pd.to_numeric(data[revenue_col], errors="coerce")
+    data = data.dropna(subset=[customer_col, revenue_col])
+    data = data[data[revenue_col] >= 0]
+    if data.empty:
+        return None, "No valid non-negative customer revenue records were available."
+
+    agg = {
+        "Historical revenue": (revenue_col, "sum"),
+        "Transaction rows": (revenue_col, "size"),
+    }
+    if date_col:
+        data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+        agg["First purchase"] = (date_col, "min")
+        agg["Last purchase"] = (date_col, "max")
+    if order_col:
+        agg["Distinct orders"] = (order_col, "nunique")
+    customers = data.groupby(customer_col, dropna=False).agg(**agg).reset_index()
+    frequency_col = "Distinct orders" if order_col else "Transaction rows"
+    customers["Purchase frequency"] = customers[frequency_col].fillna(0).astype(int)
+    customers["Customer type"] = np.where(
+        customers["Purchase frequency"] >= 2, "Repeat customer", "One-time customer"
+    )
+    customers = customers.sort_values("Historical revenue", ascending=False).reset_index(drop=True)
+    total_revenue = float(customers["Historical revenue"].sum())
+    customer_count = len(customers)
+    repeat_count = int((customers["Customer type"] == "Repeat customer").sum())
+    customers["Revenue share (%)"] = (
+        customers["Historical revenue"] / total_revenue * 100 if total_revenue > 0 else 0
+    )
+    customers["Cumulative revenue share (%)"] = customers["Revenue share (%)"].cumsum()
+    top_n = max(1, int(np.ceil(customer_count * 0.20)))
+    top_customer_share = (
+        float(customers.head(top_n)["Historical revenue"].sum() / total_revenue * 100)
+        if total_revenue > 0 else 0.0
+    )
+    order_count = (
+        int(data[order_col].nunique()) if order_col else int(data.shape[0])
+    )
+    average_order_value = total_revenue / order_count if order_count else 0.0
+    summary = {
+        "customers": customers,
+        "customer_count": customer_count,
+        "repeat_customer_count": repeat_count,
+        "repeat_rate": repeat_count / customer_count * 100 if customer_count else 0.0,
+        "historical_revenue": total_revenue,
+        "revenue_per_customer": total_revenue / customer_count if customer_count else 0.0,
+        "average_order_value": average_order_value,
+        "top_customer_count": top_n,
+        "top_customer_revenue_share": top_customer_share,
+        "frequency_note": (
+            f"Purchase frequency uses distinct values in '{order_col}'."
+            if order_col else
+            "No validated order ID was found; transaction rows are used as a purchase-frequency proxy."
+        ),
+    }
+    return summary, "Customer value metrics describe historical activity in the selected dataset; they are not forward-looking lifetime value predictions."
+
+
+@st.cache_data(show_spinner=False)
 def _train_churn_classification(frame, roles):
     """Train a transparent logistic classifier when a valid binary churn target exists."""
     target_col = roles.get("Churn / Attrition")
@@ -1742,6 +1816,73 @@ def _render_adaptive_workspace(tables):
         )
     else:
         st.caption(cohort_note)
+
+    st.subheader("Advanced Customer Intelligence")
+    st.caption(
+        "Understand repeat purchasing, historical customer value and revenue concentration. "
+        "These are descriptive metrics, not predictions of future customer lifetime value."
+    )
+    customer_intel, customer_intel_note = _calculate_advanced_customer_intelligence(
+        working, validated_roles
+    )
+    if customer_intel:
+        customer_kpis = st.columns(4)
+        customer_kpis[0].metric("Repeat customer rate", f"{customer_intel['repeat_rate']:.1f}%")
+        customer_kpis[1].metric("Historical revenue / customer",
+                                f"{customer_intel['revenue_per_customer']:,.2f}")
+        customer_kpis[2].metric("Average order value",
+                                f"{customer_intel['average_order_value']:,.2f}")
+        customer_kpis[3].metric(
+            f"Top 20% customer revenue share",
+            f"{customer_intel['top_customer_revenue_share']:.1f}%"
+        )
+        st.caption(customer_intel["frequency_note"])
+        customer_type_counts = (
+            customer_intel["customers"].groupby("Customer type", as_index=False)
+            .agg(Customers=(validated_roles["Customer"], "nunique"))
+        )
+        customer_cols = st.columns(2)
+        with customer_cols[0]:
+            st.plotly_chart(
+                px.pie(
+                    customer_type_counts, names="Customer type", values="Customers",
+                    title="One-time vs repeat customers", hole=0.45,
+                    template="plotly_white"
+                ),
+                use_container_width=True,
+                key=f"advanced_customer_repeat_{_clean_name(base_name)}"
+            )
+        with customer_cols[1]:
+            pareto_view = customer_intel["customers"].head(20).copy()
+            pareto_view[validated_roles["Customer"]] = pareto_view[
+                validated_roles["Customer"]
+            ].astype(str)
+            st.plotly_chart(
+                px.bar(
+                    pareto_view, x=validated_roles["Customer"], y="Revenue share (%)",
+                    title="Revenue contribution — top 20 customers",
+                    template="plotly_white"
+                ),
+                use_container_width=True,
+                key=f"advanced_customer_pareto_{_clean_name(base_name)}"
+            )
+        st.write(
+            f"**{customer_intel['repeat_customer_count']:,}** of "
+            f"**{customer_intel['customer_count']:,}** customers are classified as repeat customers. "
+            f"The top **{customer_intel['top_customer_count']:,}** customers account for "
+            f"**{customer_intel['top_customer_revenue_share']:.1f}%** of recorded revenue."
+        )
+        customer_table = customer_intel["customers"]
+        st.dataframe(customer_table.head(100), use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download Customer Intelligence (CSV)",
+            data=_cached_csv_export(customer_table),
+            file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_customer_intelligence.csv",
+            mime="text/csv",
+            key=f"advanced_customer_download_{_clean_name(base_name)}"
+        )
+    else:
+        st.info(customer_intel_note)
 
     st.subheader("Predictive Analytics — Churn & Sales Forecast")
     st.caption(
