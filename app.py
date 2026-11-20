@@ -995,6 +995,56 @@ def _render_adaptive_workspace(tables):
                 st.markdown(f"**{heading}**")
                 st.write(detail)
 
+    st.subheader("Export Business Report")
+    st.caption(
+        "Download a concise text report containing the selected dataset profile, "
+        "automated insights, and recommended actions."
+    )
+    report_lines = [
+        "RETAILIQ AI — BUSINESS ANALYSIS REPORT",
+        "=" * 44,
+        f"Dataset: {base_name}",
+        f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+        f"Records: {len(working):,}",
+        f"Columns: {len(working.columns):,}",
+        f"Duplicate rows: {profile['duplicate_rows']:,}",
+        f"Missing cells: {int(working.isna().sum().sum()):,}",
+        "",
+        "VALIDATED BUSINESS FIELD MAPPINGS",
+        "-" * 34,
+    ]
+    if validated_roles:
+        report_lines.extend([f"{role}: {column}" for role, column in validated_roles.items()])
+    else:
+        report_lines.append("No high-confidence semantic mappings were available.")
+    report_lines.extend(["", "AUTOMATED BUSINESS INSIGHTS", "-" * 28])
+    if business_insights:
+        for heading, detail in business_insights:
+            report_lines.extend([f"{heading}: {detail}", ""])
+    else:
+        report_lines.append("Not enough validated fields to generate insights.")
+    report_lines.extend(["", "BUSINESS ADVISOR — RECOMMENDED ACTIONS", "-" * 39])
+    if business_recommendations:
+        for priority, heading, detail in business_recommendations:
+            report_lines.extend([f"[{priority}] {heading}", detail, ""])
+    else:
+        report_lines.append("No rule-based recommendations were triggered for this dataset.")
+    report_lines.extend([
+        "",
+        "NOTE",
+        "This report summarizes patterns in the selected data. Recommendations are rule-based prompts for investigation; they do not establish causation or guarantee future results. Validate field mappings and business context before making decisions.",
+    ])
+    report_text = "\n".join(report_lines)
+    report_filename = f"{_clean_name(str(base_name)) or 'retailiq'}_business_report.txt"
+    st.download_button(
+        "Download Business Report",
+        data=report_text,
+        file_name=report_filename,
+        mime="text/plain",
+        key=f"business_report_{_clean_name(str(base_name))}",
+        use_container_width=True,
+    )
+
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
     detected_features = _detect_dataset_features(working)
