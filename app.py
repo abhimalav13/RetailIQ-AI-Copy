@@ -465,6 +465,57 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
+def _validated_role_columns(frame):
+    """Return high-confidence semantic matches that passed basic type validation."""
+    mapping = _semantic_column_mapping(frame)
+    result = {}
+    for row in mapping:
+        if row["Confidence"] == "High":
+            result[row["Business role"]] = row["Suggested column"]
+    return result
+
+
+def _render_semantic_kpis(frame, role_columns, key_prefix="semantic"):
+    """Render only KPIs supported by validated fields; avoid fabricated metrics."""
+    cards = []
+    revenue_col = role_columns.get("Revenue / Sales")
+    quantity_col = role_columns.get("Quantity / Units")
+    order_col = role_columns.get("Order / Transaction ID")
+    customer_col = role_columns.get("Customer")
+    product_col = role_columns.get("Product")
+    rating_col = role_columns.get("Rating / Review")
+
+    if revenue_col:
+        values = pd.to_numeric(frame[revenue_col], errors="coerce").dropna()
+        if not values.empty:
+            cards.append(("Total revenue / sales", f"{values.sum():,.2f}"))
+            cards.append(("Average transaction value", f"{values.mean():,.2f}"))
+    if order_col:
+        cards.append(("Distinct orders / transactions", f"{frame[order_col].nunique(dropna=True):,}"))
+    if customer_col:
+        cards.append(("Distinct customers", f"{frame[customer_col].nunique(dropna=True):,}"))
+    if product_col:
+        cards.append(("Distinct products", f"{frame[product_col].nunique(dropna=True):,}"))
+    if quantity_col:
+        values = pd.to_numeric(frame[quantity_col], errors="coerce").dropna()
+        if not values.empty:
+            cards.append(("Total units", f"{values.sum():,.2f}"))
+    if rating_col:
+        values = pd.to_numeric(frame[rating_col], errors="coerce").dropna()
+        if not values.empty:
+            cards.append(("Average rating", f"{values.mean():,.2f}"))
+
+    if cards:
+        st.subheader("Business KPIs from validated column matches")
+        st.caption("These KPIs use high-confidence column-name matches only. Confirm the business meaning and units before relying on them.")
+        for offset in range(0, len(cards), 3):
+            columns = st.columns(3)
+            for col, (label, value) in zip(columns, cards[offset:offset + 3]):
+                col.metric(label, value)
+    else:
+        st.info("No high-confidence business fields were found for automatic KPI calculation. Use the manual data explorer below.")
+
+
 def _truthy_mask(series):
     """Interpret common binary/text outcomes without assuming a particular encoding."""
     text = series.astype(str).str.strip().str.lower()
@@ -677,8 +728,11 @@ def _render_adaptive_workspace(tables):
         "RetailIQ matches common naming variations to business concepts. "
         "These are suggestions only; confirm them before using a field in calculations."
     )
-    semantic_mapping = pd.DataFrame(_semantic_column_mapping(working))
+    semantic_mapping_rows = _semantic_column_mapping(working)
+    semantic_mapping = pd.DataFrame(semantic_mapping_rows)
     st.dataframe(semantic_mapping, use_container_width=True, hide_index=True)
+    validated_roles = _validated_role_columns(working)
+    _render_semantic_kpis(working, validated_roles, key_prefix=_clean_name(base_name))
 
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
@@ -729,11 +783,19 @@ def _render_adaptive_workspace(tables):
         "Supply Chain / Logistics": ["Sales", "Order Item Total", "Order Profit Per Order", "Days for shipping (real)"],
         "General Dataset Analytics": ["Sales", "Revenue", "Amount", "Profit", "Price"]
     }
-    for alias in measure_aliases.get(domain, []):
-        found = _find_column(working, [alias])
-        if found in numeric_options:
-            preferred_measure = found
+    semantic_revenue = validated_roles.get("Revenue / Sales")
+    semantic_quantity = validated_roles.get("Quantity / Units")
+    semantic_price = validated_roles.get("Unit price")
+    for candidate in [semantic_revenue, semantic_quantity, semantic_price]:
+        if candidate in numeric_options:
+            preferred_measure = candidate
             break
+    if preferred_measure is None:
+        for alias in measure_aliases.get(domain, []):
+            found = _find_column(working, [alias])
+            if found in numeric_options:
+                preferred_measure = found
+                break
     if preferred_measure is None and numeric_options:
         preferred_measure = numeric_options[0]
 
@@ -756,19 +818,32 @@ def _render_adaptive_workspace(tables):
         "Supply Chain / Logistics": ["Delivery Status", "Order Region", "Type", "Shipping Mode", "Market"],
         "General Dataset Analytics": []
     }
-    for alias in category_aliases.get(domain, []):
-        found = _find_column(working, [alias])
-        if found in category_options:
-            preferred_category = found
+    semantic_category_priority = [
+        validated_roles.get("Category"),
+        validated_roles.get("Product"),
+        validated_roles.get("Geography"),
+        validated_roles.get("Customer"),
+        validated_roles.get("Status"),
+    ]
+    for candidate in semantic_category_priority:
+        if candidate in category_options:
+            preferred_category = candidate
             break
+    if preferred_category is None:
+        for alias in category_aliases.get(domain, []):
+            found = _find_column(working, [alias])
+            if found in category_options:
+                preferred_category = found
+                break
     if preferred_category is None and category_options:
         preferred_category = category_options[0]
 
     tabs = st.tabs(["Overview & visuals", "Relationships", "Data preview"])
     with tabs[0]:
         if date_options:
-            date_default = date_options[0]
-            date_col = st.selectbox("Date field", date_options, index=0,
+            semantic_date = validated_roles.get("Date / Timestamp")
+            date_default = semantic_date if semantic_date in date_options else date_options[0]
+            date_col = st.selectbox("Date field", date_options, index=date_options.index(date_default),
                                     key=f"adaptive_date_{_clean_name(base_name)}")
             if measure:
                 trend_agg = st.selectbox("Time trend aggregation", ["Sum", "Average", "Record count"],
