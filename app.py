@@ -465,6 +465,44 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
+def _build_data_quality_report(frame, profile):
+    """Create non-destructive data-quality diagnostics; never alter source rows."""
+    rows = []
+    row_count = max(1, len(frame))
+    for col in frame.columns:
+        series = frame[col]
+        missing = int(series.isna().sum())
+        nonmissing = int(series.notna().sum())
+        name = _clean_name(col)
+        issue_count = 0
+        issue_label = "Missing values"
+        if col in profile.get("dates", []):
+            parsed = pd.to_datetime(series, errors="coerce")
+            issue_count = int((series.notna() & parsed.isna()).sum())
+            issue_label = "Unparseable dates"
+        elif col in profile.get("numeric", []):
+            converted = pd.to_numeric(series, errors="coerce")
+            issue_count = int((series.notna() & converted.isna()).sum())
+            issue_label = "Non-numeric values"
+        elif pd.api.types.is_numeric_dtype(series) and nonmissing >= 8:
+            numeric = pd.to_numeric(series, errors="coerce").dropna()
+            if len(numeric) >= 8 and numeric.nunique() > 3:
+                q1, q3 = numeric.quantile([0.25, 0.75])
+                iqr = q3 - q1
+                if iqr > 0:
+                    issue_count = int(((numeric < q1 - 1.5 * iqr) |
+                                       (numeric > q3 + 1.5 * iqr)).sum())
+                    issue_label = "Potential outliers (IQR)"
+        rows.append({
+            "Column": str(col),
+            "Missing values": missing,
+            "Missing %": round(missing / row_count * 100, 2),
+            "Additional check": issue_label,
+            "Additional issues": issue_count
+        })
+    return pd.DataFrame(rows)
+
+
 def _recommend_chart_types(frame, profile, roles):
     """Recommend chart forms from detected field roles and cardinality."""
     recommendations = []
@@ -791,6 +829,21 @@ def _render_adaptive_workspace(tables):
             st.warning("Columns with at least 20% missing values: " + ", ".join(f"{c} ({n:,})" for c, n in high_missing[:12]))
         else:
             st.success("No columns have 20% or more missing values.")
+        quality_report = _build_data_quality_report(working, profile)
+        st.markdown("**Column-level validation**")
+        st.dataframe(quality_report, use_container_width=True, hide_index=True)
+        invalid_total = int(quality_report["Additional issues"].sum())
+        if invalid_total:
+            st.warning(
+                f"Found {invalid_total:,} potential parsing issues or statistical outliers. "
+                "Outliers are flagged for review, not automatically treated as errors."
+            )
+        else:
+            st.success("No additional parsing issues or IQR outliers were detected by these checks.")
+        st.caption(
+            "These checks are diagnostic only. RetailIQ does not automatically delete, impute, "
+            "or modify source values. Statistical outliers may be valid business events."
+        )
 
     st.subheader(f"Adaptive overview — {domain}")
     _render_domain_kpis(working, domain)
