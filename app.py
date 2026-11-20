@@ -489,7 +489,7 @@ def _render_semantic_kpis(frame, role_columns, key_prefix="semantic"):
         values = pd.to_numeric(frame[revenue_col], errors="coerce").dropna()
         if not values.empty:
             cards.append(("Total revenue / sales", f"{values.sum():,.2f}"))
-            cards.append(("Average transaction value", f"{values.mean():,.2f}"))
+            cards.append(("Average sales per record", f"{values.mean():,.2f}"))
     if order_col:
         cards.append(("Distinct orders / transactions", f"{frame[order_col].nunique(dropna=True):,}"))
     if customer_col:
@@ -507,7 +507,12 @@ def _render_semantic_kpis(frame, role_columns, key_prefix="semantic"):
 
     if cards:
         st.subheader("Business KPIs from validated column matches")
-        st.caption("These KPIs use high-confidence column-name matches only. Confirm the business meaning and units before relying on them.")
+        st.caption(
+            "These KPIs use high-confidence column-name matches only. "
+            "Average sales per record is a row-level average, not average order value. "
+            "Total sales is a row sum and should only be treated as revenue when the source field "
+            "contains additive line-level sales amounts."
+        )
         for offset in range(0, len(cards), 3):
             columns = st.columns(3)
             for col, (label, value) in zip(columns, cards[offset:offset + 3]):
