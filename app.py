@@ -1462,6 +1462,79 @@ def _render_adaptive_workspace(tables):
 
     profile = _profile_table(working)
     date_options, numeric_options, category_options = profile["dates"], profile["numeric"], profile["categorical"]
+
+    # Batch 8: exception monitoring using transparent statistical rules.
+    st.subheader("Anomaly & Exception Monitor")
+    st.caption(
+        "Identify unusually high or low numeric values in the current analysis view. "
+        "These are statistical flags for review, not proof of errors or fraud."
+    )
+    anomaly_candidates = [
+        col for col in numeric_options
+        if pd.to_numeric(working[col], errors="coerce").notna().sum() >= 8
+    ]
+    if anomaly_candidates:
+        anomaly_controls = st.columns(2)
+        with anomaly_controls[0]:
+            anomaly_column = st.selectbox(
+                "Metric to inspect", anomaly_candidates,
+                key=f"adaptive_anomaly_column_{_clean_name(base_name)}"
+            )
+        with anomaly_controls[1]:
+            anomaly_method = st.selectbox(
+                "Detection method", ["Interquartile range (IQR)", "Z-score"],
+                key=f"adaptive_anomaly_method_{_clean_name(base_name)}"
+            )
+        anomaly_values = pd.to_numeric(working[anomaly_column], errors="coerce")
+        valid_anomaly_values = anomaly_values.dropna()
+        if anomaly_method == "Interquartile range (IQR)":
+            q1, q3 = valid_anomaly_values.quantile([0.25, 0.75])
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            anomaly_mask = anomaly_values.lt(lower_bound) | anomaly_values.gt(upper_bound)
+            method_note = "Values below Q1 − 1.5×IQR or above Q3 + 1.5×IQR are flagged."
+        else:
+            mean_value = valid_anomaly_values.mean()
+            std_value = valid_anomaly_values.std(ddof=0)
+            if std_value > 0:
+                anomaly_score = (anomaly_values - mean_value) / std_value
+                anomaly_mask = anomaly_score.abs() > 3
+            else:
+                anomaly_mask = pd.Series(False, index=working.index)
+            lower_bound = mean_value - 3 * std_value
+            upper_bound = mean_value + 3 * std_value
+            method_note = "Values more than 3 standard deviations from the mean are flagged."
+        anomaly_mask = anomaly_mask.fillna(False)
+        flagged_count = int(anomaly_mask.sum())
+        anomaly_metrics = st.columns(3)
+        anomaly_metrics[0].metric("Flagged records", f"{flagged_count:,}")
+        anomaly_metrics[1].metric(
+            "Share flagged", f"{flagged_count / max(1, len(working)) * 100:.2f}%"
+        )
+        anomaly_metrics[2].metric(
+            "Records reviewed", f"{int(anomaly_values.notna().sum()):,}"
+        )
+        st.caption(
+            f"{method_note} Reference bounds: {lower_bound:,.4g} to {upper_bound:,.4g}."
+        )
+        if flagged_count:
+            anomaly_rows = working.loc[anomaly_mask].copy()
+            anomaly_rows.insert(0, "Source row index", anomaly_rows.index.astype(str))
+            st.dataframe(anomaly_rows.head(500), use_container_width=True, hide_index=True)
+            if flagged_count > 500:
+                st.caption("Showing the first 500 flagged records; the CSV export includes all flagged records.")
+            st.download_button(
+                "Download Flagged Records (CSV)",
+                data=_cached_csv_export(anomaly_rows),
+                file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_anomaly_flags.csv",
+                mime="text/csv",
+                key=f"adaptive_anomaly_download_{_clean_name(base_name)}"
+            )
+        else:
+            st.success("No records were flagged by the selected method.")
+    else:
+        st.info("Anomaly monitoring needs a numeric field with at least eight valid values.")
     domain = _domain_summary(working)
     st.subheader("Data quality and structure")
     q1, q2, q3, q4 = st.columns(4)
