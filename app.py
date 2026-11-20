@@ -1382,6 +1382,36 @@ def _render_adaptive_workspace(tables):
                     filtered[category_col].astype(str).isin(selected_categories)
                 ].copy()
 
+    # Batch 6: optional numeric range filter.
+    filter_numeric_cols = [
+        col for col in filter_profile["numeric"]
+        if pd.to_numeric(filtered[col], errors="coerce").notna().sum() > 1
+    ]
+    if filter_numeric_cols:
+        st.markdown("**Optional numeric range filter**")
+        numeric_filter_col = st.selectbox(
+            "Numeric field", ["No numeric filter"] + filter_numeric_cols,
+            key=f"adaptive_filter_numeric_col_{_clean_name(base_name)}"
+        )
+        if numeric_filter_col != "No numeric filter":
+            numeric_values = pd.to_numeric(filtered[numeric_filter_col], errors="coerce").dropna()
+            numeric_min, numeric_max = float(numeric_values.min()), float(numeric_values.max())
+            if numeric_min < numeric_max:
+                numeric_step = (numeric_max - numeric_min) / 100
+                selected_range = st.slider(
+                    f"Keep {numeric_filter_col} within",
+                    min_value=numeric_min,
+                    max_value=numeric_max,
+                    value=(numeric_min, numeric_max),
+                    step=numeric_step if numeric_step > 0 else 0.01,
+                    key=f"adaptive_filter_numeric_range_{_clean_name(base_name)}"
+                )
+                numeric_series = pd.to_numeric(filtered[numeric_filter_col], errors="coerce")
+                filtered = filtered.loc[
+                    numeric_series.between(selected_range[0], selected_range[1])
+                ].copy()
+            else:
+                st.caption("The selected numeric field has no range to narrow.")
     working = filtered
     if working.empty:
         st.warning("No records match the selected filters. Adjust the filters to continue.")
@@ -1423,6 +1453,78 @@ def _render_adaptive_workspace(tables):
     st.dataframe(semantic_mapping, use_container_width=True, hide_index=True)
     validated_roles = _validated_role_columns(working)
     _render_semantic_kpis(working, validated_roles, key_prefix=_clean_name(base_name))
+
+    st.subheader("Custom Business Breakdown")
+    st.caption(
+        "Compare a numeric measure across a category detected in your dataset. "
+        "The chart and table use the currently filtered analysis data."
+    )
+    breakdown_categories = [
+        col for col in profile["categorical"]
+        if 2 <= int(profile["unique"].get(col, 0)) <= 100
+    ]
+    breakdown_measures = list(profile["numeric"])
+    if breakdown_categories and breakdown_measures:
+        breakdown_controls = st.columns(3)
+        with breakdown_controls[0]:
+            breakdown_category = st.selectbox(
+                "Group by", breakdown_categories,
+                key=f"adaptive_breakdown_category_{_clean_name(base_name)}"
+            )
+        with breakdown_controls[1]:
+            breakdown_measure = st.selectbox(
+                "Measure", breakdown_measures,
+                key=f"adaptive_breakdown_measure_{_clean_name(base_name)}"
+            )
+        with breakdown_controls[2]:
+            breakdown_aggregation = st.selectbox(
+                "Aggregation", ["Sum", "Average", "Median", "Count"],
+                key=f"adaptive_breakdown_aggregation_{_clean_name(base_name)}"
+            )
+        breakdown_source = working[[breakdown_category, breakdown_measure]].copy()
+        breakdown_source[breakdown_measure] = pd.to_numeric(
+            breakdown_source[breakdown_measure], errors="coerce"
+        )
+        if breakdown_aggregation == "Sum":
+            breakdown_table = breakdown_source.groupby(
+                breakdown_category, dropna=False
+            )[breakdown_measure].sum().reset_index(name="Value")
+        elif breakdown_aggregation == "Average":
+            breakdown_table = breakdown_source.groupby(
+                breakdown_category, dropna=False
+            )[breakdown_measure].mean().reset_index(name="Value")
+        elif breakdown_aggregation == "Median":
+            breakdown_table = breakdown_source.groupby(
+                breakdown_category, dropna=False
+            )[breakdown_measure].median().reset_index(name="Value")
+        else:
+            breakdown_table = breakdown_source.groupby(
+                breakdown_category, dropna=False
+            )[breakdown_measure].count().reset_index(name="Value")
+        breakdown_table[breakdown_category] = breakdown_table[breakdown_category].astype(str)
+        breakdown_table = breakdown_table.sort_values("Value", ascending=False).head(20)
+        if not breakdown_table.empty:
+            st.plotly_chart(
+                px.bar(
+                    breakdown_table, x=breakdown_category, y="Value",
+                    title=f"{breakdown_aggregation} of {breakdown_measure} by {breakdown_category}",
+                    template="plotly_white"
+                ),
+                use_container_width=True,
+                key=f"adaptive_custom_breakdown_{_clean_name(base_name)}"
+            )
+            st.dataframe(breakdown_table, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download Custom Breakdown (CSV)",
+                data=_cached_csv_export(breakdown_table),
+                file_name=f"{_clean_name(str(base_name)) or 'retailiq'}_custom_breakdown.csv",
+                mime="text/csv",
+                key=f"adaptive_breakdown_download_{_clean_name(base_name)}"
+            )
+        else:
+            st.info("No valid grouped values are available for this selection.")
+    else:
+        st.info("Custom breakdown needs at least one detected category and one numeric measure.")
 
     business_insights = _generate_business_insights(working, validated_roles)
     st.subheader("Automated Business Insights")
