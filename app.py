@@ -465,6 +465,30 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
+def _recommend_chart_types(frame, profile, roles):
+    """Recommend chart forms from detected field roles and cardinality."""
+    recommendations = []
+    date_col = roles.get("Date / Timestamp")
+    category_col = roles.get("Category") or roles.get("Geography") or roles.get("Product")
+    measure_col = roles.get("Revenue / Sales") or roles.get("Quantity / Units")
+    numeric_cols = profile.get("numeric", [])
+
+    if date_col and measure_col:
+        recommendations.append(("Time trend", "Line chart", f"{measure_col} over {date_col}"))
+    if category_col:
+        count = frame[category_col].nunique(dropna=True)
+        chart = "Donut chart" if 2 <= count <= 5 else "Horizontal bar chart"
+        detail = f"Compare {category_col} across {count:,} distinct values"
+        if measure_col:
+            detail += f" using {measure_col}"
+        recommendations.append(("Category comparison", chart, detail))
+    if measure_col:
+        recommendations.append(("Measure distribution", "Histogram", f"Understand the spread of {measure_col}"))
+    if len(numeric_cols) >= 2:
+        recommendations.append(("Measure relationship", "Scatter plot / correlation", "Explore association between numeric measures"))
+    return recommendations
+
+
 def _validated_role_columns(frame):
     """Return high-confidence semantic matches that passed basic type validation."""
     mapping = _semantic_column_mapping(frame)
@@ -843,6 +867,17 @@ def _render_adaptive_workspace(tables):
     if preferred_category is None and category_options:
         preferred_category = category_options[0]
 
+    chart_recommendations = _recommend_chart_types(working, profile, validated_roles)
+    if chart_recommendations:
+        st.subheader("Recommended visualizations")
+        st.caption("Chart suggestions are based on detected column roles and category counts. They are starting points, not proof of a business relationship.")
+        rec_cols = st.columns(min(3, len(chart_recommendations)))
+        for idx, (purpose, chart_type, detail) in enumerate(chart_recommendations):
+            with rec_cols[idx % len(rec_cols)]:
+                st.markdown(f"**{purpose}**")
+                st.write(chart_type)
+                st.caption(detail)
+
     tabs = st.tabs(["Overview & visuals", "Relationships", "Data preview"])
     with tabs[0]:
         if date_options:
@@ -892,10 +927,20 @@ def _render_adaptive_workspace(tables):
                 y_col = measure
             if not grouped.empty:
                 title_metric = "Number of records" if chart_metric == "Record count" else chart_metric
-                st.plotly_chart(px.bar(grouped, x=category_col, y=y_col,
-                                       title=f"{title_metric} by {category_col}", template="plotly_white"),
-                                use_container_width=True, key=f"adaptive_category_bar_{_clean_name(base_name)}")
-                if 2 <= len(grouped) <= 8:
+                if len(grouped) > 8:
+                    category_fig = px.bar(
+                        grouped.sort_values(y_col), x=y_col, y=category_col,
+                        orientation="h", title=f"{title_metric} by {category_col}",
+                        template="plotly_white"
+                    )
+                else:
+                    category_fig = px.bar(
+                        grouped, x=category_col, y=y_col,
+                        title=f"{title_metric} by {category_col}", template="plotly_white"
+                    )
+                st.plotly_chart(category_fig, use_container_width=True,
+                                key=f"adaptive_category_bar_{_clean_name(base_name)}")
+                if 2 <= len(grouped) <= 5:
                     st.plotly_chart(px.pie(grouped, names=category_col, values=y_col, hole=0.5,
                                            title=f"{title_metric} share by {category_col}"),
                                     use_container_width=True, key=f"adaptive_category_pie_{_clean_name(base_name)}")
