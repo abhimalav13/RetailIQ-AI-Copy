@@ -165,6 +165,93 @@ h1, h2, h3 {
 """, unsafe_allow_html=True)
 
 
+st.markdown("""
+<style>
+/* Batch 11 — visual consistency and responsive dashboard polish */
+.block-container {
+    max-width: 1500px;
+    padding-left: clamp(1rem, 3vw, 2.5rem);
+    padding-right: clamp(1rem, 3vw, 2.5rem);
+}
+h1, h2, h3 {
+    letter-spacing: -0.025em;
+}
+[data-testid="stMetric"] {
+    min-height: 112px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+[data-testid="stMetricLabel"] p {
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+[data-testid="stMetricValue"] {
+    font-size: clamp(1.35rem, 2vw, 2rem);
+}
+[data-testid="stPlotlyChart"] {
+    background: #FFFFFF;
+    border: 1px solid #E5EAF1;
+    border-radius: 14px;
+    padding: 0.35rem;
+}
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+    background: #FFFFFF;
+    border-radius: 12px;
+}
+.stDownloadButton > button {
+    border: 1px solid #00A6A6;
+    border-radius: 9px;
+    font-weight: 600;
+}
+[data-testid="stExpander"] {
+    border: 1px solid #E5EAF1;
+    border-radius: 12px;
+    background: #FFFFFF;
+}
+[data-testid="stSidebar"] [role="radiogroup"] {
+    gap: 0.35rem;
+}
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    border-radius: 9px;
+    padding: 0.35rem 0.5rem;
+}
+[data-testid="stSidebar"] [data-testid="stMetric"] {
+    min-height: 88px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: none;
+}
+[data-testid="stSidebar"] [data-testid="stMetricLabel"],
+[data-testid="stSidebar"] [data-testid="stMetricValue"] {
+    color: #FFFFFF !important;
+}
+.workspace-kicker {
+    color: #0F8F8F;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: -0.45rem;
+}
+.workspace-subtitle {
+    color: #64748B;
+    font-size: 0.92rem;
+    margin-top: -0.55rem;
+}
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    [data-testid="stMetric"] {
+        min-height: 90px;
+        padding: 12px;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.image(
     "ff744770-ea67-497d-916e-55c45b633585.png",
     width=520
@@ -278,6 +365,19 @@ except Exception as e:
     st.error(f"Unable to read one of the uploaded files: {e}")
     st.stop()
 
+# Batch 11: compact dataset context in the sidebar.
+uploaded_table_rows = sum(len(table) for table in uploaded_data.values())
+uploaded_table_columns = sum(len(table.columns) for table in uploaded_data.values())
+st.sidebar.divider()
+st.sidebar.markdown("**Current upload**")
+sidebar_metrics = st.sidebar.columns(2)
+sidebar_metrics[0].metric("Tables", f"{len(uploaded_data):,}")
+sidebar_metrics[1].metric("Rows", f"{uploaded_table_rows:,}")
+with st.sidebar.expander("Uploaded file details", expanded=False):
+    for table_name, table_frame in uploaded_data.items():
+        st.markdown(f"**{table_name}**")
+        st.caption(f"{len(table_frame):,} rows · {len(table_frame.columns):,} columns")
+    st.caption(f"Total columns across uploaded tables: {uploaded_table_columns:,}")
 
 
 # ==========================================
@@ -2898,6 +2998,23 @@ page = st.sidebar.radio(
         "AI Business Advisor"
     ]
 )
+
+page_descriptions = {
+    "Business Overview": "A high-level view of revenue, orders, customers and overall performance.",
+    "Sales Analytics": "Explore sales trends, order patterns and revenue movement.",
+    "Product Intelligence": "Understand product contribution, demand and performance.",
+    "Market Analysis": "Compare customer and geographic market performance.",
+    "Sales Forecast": "Review historical patterns and model-based sales projections.",
+    "AI Business Advisor": "Turn business signals into practical recommendations and actions.",
+}
+st.markdown('<div class="workspace-kicker">RETAILIQ AI  /  BUSINESS INTELLIGENCE</div>',
+            unsafe_allow_html=True)
+st.title(page)
+st.markdown(
+    f'<div class="workspace-subtitle">{page_descriptions.get(page, "Explore your retail data.")}</div>',
+    unsafe_allow_html=True
+)
+st.divider()
 
 # ==========================================
 # PAGE 1: BUSINESS OVERVIEW
