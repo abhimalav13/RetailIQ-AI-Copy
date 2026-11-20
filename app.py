@@ -747,35 +747,31 @@ if not is_olist_upload and (
     st.stop()
 
 if is_olist_upload:
+    # Orders + order items are the minimum reliable grain for Olist sales.
+    # Product, customer, seller, review and translation files enrich analysis
+    # but are not required to load the dataset.
     missing_olist = []
-    for label, table in [
-        ("olist_orders_dataset.csv", olist_orders),
-        ("olist_order_items_dataset.csv", olist_items),
-        ("olist_products_dataset.csv", olist_products),
-        ("olist_customers_dataset.csv", olist_customers),
-    ]:
-        if table is None:
-            missing_olist.append(label)
+    if olist_orders is None:
+        missing_olist.append("olist_orders_dataset.csv")
+    if olist_items is None:
+        missing_olist.append("olist_order_items_dataset.csv")
 
     if missing_olist:
         st.error(
-            "Olist upload is incomplete. Please upload these required files together: "
-            + ", ".join(missing_olist)
+            "RetailIQ needs the Olist orders and order-items files to calculate "
+            "reliable sales and date-based metrics. Missing: " + ", ".join(missing_olist)
+        )
+        st.info(
+            "Product, customer, seller, review and category-translation files are "
+            "optional. Upload them when available to unlock additional analysis."
         )
         st.stop()
 
     required_schemas = {
         "orders": {"order_id", "customer_id", "order_purchase_timestamp", "order_status"},
         "items": {"order_id", "order_item_id", "product_id", "seller_id", "price"},
-        "products": {"product_id", "product_category_name"},
-        "customers": {"customer_id", "customer_unique_id", "customer_city", "customer_state"},
     }
-    supplied_tables = {
-        "orders": olist_orders,
-        "items": olist_items,
-        "products": olist_products,
-        "customers": olist_customers,
-    }
+    supplied_tables = {"orders": olist_orders, "items": olist_items}
     schema_errors = []
     for table_name, required in required_schemas.items():
         missing = required - set(supplied_tables[table_name].columns)
@@ -785,44 +781,70 @@ if is_olist_upload:
         st.error("The uploaded Olist files have unexpected columns: " + "; ".join(schema_errors))
         st.stop()
 
-    # Keep the order-item grain: one row represents one product line in an order.
-    # Join only one-to-one / many-to-one tables to avoid multiplying sales rows.
+    optional_status = {
+        "Products": olist_products is not None,
+        "Customers": olist_customers is not None,
+        "Sellers": olist_sellers is not None,
+        "Reviews": olist_reviews is not None,
+        "Category translation": olist_translation is not None,
+    }
+    unavailable = [name for name, available in optional_status.items() if not available]
+    if unavailable:
+        st.info(
+            "Partial Olist upload detected. Available data will be analysed; "
+            "these optional features are unavailable until you upload: "
+            + ", ".join(unavailable) + "."
+        )
+
     orders_for_join = olist_orders.copy()
     items_for_join = olist_items.copy()
-    products_for_join = olist_products.copy()
-    customers_for_join = olist_customers.copy()
-
     orders_for_join["order_purchase_timestamp"] = pd.to_datetime(
         orders_for_join["order_purchase_timestamp"], errors="coerce"
     )
     orders_for_join = orders_for_join.dropna(subset=["order_id"])
     items_for_join = items_for_join.dropna(subset=["order_id", "product_id"])
+    items_for_join["price"] = pd.to_numeric(items_for_join["price"], errors="coerce")
+    items_for_join = items_for_join.dropna(subset=["price"])
+    items_for_join = items_for_join[items_for_join["price"] > 0]
 
-    # Use delivered orders for completed-sales KPIs; report the status filter to the user.
     delivered_orders = orders_for_join[
         orders_for_join["order_status"].astype(str).str.lower().eq("delivered")
     ].copy()
     if delivered_orders.empty:
-        st.error("No delivered orders were found. Check the Olist orders file.")
+        st.error("No delivered Olist orders were found. Completed-sales analysis cannot continue.")
         st.stop()
-
-    # Remove accidental duplicate dimension keys before joining.
-    products_for_join = products_for_join.drop_duplicates(subset=["product_id"])
-    customers_for_join = customers_for_join.drop_duplicates(subset=["customer_id"])
 
     combined = items_for_join.merge(
         delivered_orders[["order_id", "customer_id", "order_purchase_timestamp", "order_status"]],
         on="order_id", how="inner", validate="many_to_one"
     )
-    combined = combined.merge(
-        products_for_join, on="product_id", how="left", validate="many_to_one"
-    )
-    combined = combined.merge(
-        customers_for_join[[
-            "customer_id", "customer_unique_id", "customer_city", "customer_state"
-        ]],
-        on="customer_id", how="left", validate="many_to_one"
-    )
+
+    # Optional product dimension: retain item rows even when product metadata is absent.
+    if olist_products is not None and {"product_id", "product_category_name"}.issubset(olist_products.columns):
+        products_for_join = olist_products.drop_duplicates(subset=["product_id"])
+        combined = combined.merge(
+            products_for_join, on="product_id", how="left", validate="many_to_one"
+        )
+        category_name = combined["product_category_name"].fillna("Uncategorised")
+    else:
+        combined["product_category_name"] = "Uncategorised"
+        category_name = combined["product_category_name"]
+
+    # Optional customer dimension.
+    if olist_customers is not None and {
+        "customer_id", "customer_unique_id", "customer_city", "customer_state"
+    }.issubset(olist_customers.columns):
+        customers_for_join = olist_customers.drop_duplicates(subset=["customer_id"])
+        combined = combined.merge(
+            customers_for_join[[
+                "customer_id", "customer_unique_id", "customer_city", "customer_state"
+            ]],
+            on="customer_id", how="left", validate="many_to_one"
+        )
+    else:
+        combined["customer_unique_id"] = combined["customer_id"]
+        combined["customer_city"] = np.nan
+        combined["customer_state"] = np.nan
 
     if olist_translation is not None and {
         "product_category_name", "product_category_name_english"
@@ -834,11 +856,8 @@ if is_olist_upload:
         category_name = combined["product_category_name_english"].fillna(
             combined["product_category_name"]
         )
-    else:
-        category_name = combined["product_category_name"]
 
-    # Seller and review data are supplementary; review rows are aggregated first
-    # so they cannot multiply order-item records.
+    # Optional seller and review dimensions are joined without multiplying item rows.
     if olist_sellers is not None and {"seller_id", "seller_city", "seller_state"}.issubset(olist_sellers.columns):
         seller_dim = olist_sellers.drop_duplicates(subset=["seller_id"])
         combined = combined.merge(
@@ -868,7 +887,6 @@ if is_olist_upload:
         "Country": "Brazil",
         "CustomerID": combined["customer_unique_id"],
     })
-    # Preserve useful Olist attributes for later customer/region/seller analysis.
     for optional_col in [
         "customer_city", "customer_state", "seller_id", "seller_city",
         "seller_state", "freight_value", "order_item_id", "ReviewScore",
@@ -878,12 +896,13 @@ if is_olist_upload:
             raw_df[optional_col] = combined[optional_col].values
 
     st.success(
-        f"Olist dataset integrated successfully: {len(raw_df):,} order-item rows "
+        f"Olist data integrated: {len(raw_df):,} order-item rows "
         f"from {raw_df['InvoiceNo'].nunique():,} delivered orders."
     )
     st.caption(
-        "Olist preparation: one row per order item; quantity is represented as 1 per item row; "
-        "sales revenue uses item price and excludes freight. Only delivered orders are included."
+        "Olist preparation: one row per order item; Quantity is represented as 1 per item row; "
+        "revenue uses item price and excludes freight. Only delivered orders are included. "
+        "Customer/product/seller/review insights depend on the optional files uploaded."
     )
 
 else:
