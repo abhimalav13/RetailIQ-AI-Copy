@@ -1090,6 +1090,23 @@ def _render_adaptive_workspace(tables):
         use_container_width=True,
     )
 
+    st.subheader("Export Selected Analysis Dataset")
+    st.caption(
+        "Download the exact table currently used for Adaptive Analytics. "
+        "If you applied table joins, the export includes the joined result. "
+        "Source values are not automatically cleaned or changed."
+    )
+    export_csv = working.to_csv(index=False)
+    export_filename = f"{_clean_name(str(base_name)) or 'retailiq'}_analysis_dataset.csv"
+    st.download_button(
+        "Download Analysis Dataset (CSV)",
+        data=export_csv,
+        file_name=export_filename,
+        mime="text/csv",
+        key=f"analysis_dataset_{_clean_name(str(base_name))}",
+        use_container_width=True,
+    )
+
     st.subheader("Automatically detected analysis features")
     st.caption("Feature availability is inferred from column names. Review the detected fields before using the results for business decisions.")
     detected_features = _detect_dataset_features(working)
