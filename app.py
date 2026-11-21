@@ -672,6 +672,58 @@ currency_options = {
     "AUD": {"name": "Australian Dollar (A$)", "symbol": "A$"}
 }
 
+st.markdown("""
+<style>
+/* Dedicated fix for the currency selectbox in the sidebar.
+   Streamlit/BaseWeb nests the selected value in several div/span layers,
+   so target the widget specifically and override legacy sidebar colors. */
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"],
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
+    background-color: #211a35 !important;
+    background: #211a35 !important;
+    border-color: #a66aff !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] *,
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] input,
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] span,
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] div {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] svg {
+    color: #d8b4fe !important;
+    fill: #d8b4fe !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+    min-height: 44px !important;
+    border-radius: 10px !important;
+}
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div,
+[data-baseweb="menu"],
+[role="listbox"] {
+    background-color: #171326 !important;
+    color: #ffffff !important;
+    border: 1px solid #8b5acb !important;
+}
+[data-baseweb="popover"] *,
+[data-baseweb="menu"] *,
+[role="listbox"] *,
+[role="option"] {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+[role="option"]:hover,
+[role="option"][aria-selected="true"],
+[data-baseweb="menu"] li:hover {
+    background-color: #482477 !important;
+    color: #ffffff !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 selected_currency = st.sidebar.selectbox(
     "Display Currency (symbol only)",
     options=list(currency_options.keys()),
