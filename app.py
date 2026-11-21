@@ -59,7 +59,7 @@ def _retailiq_style_figure(fig):
             bgcolor="#211333", bordercolor=purple,
             font=dict(color="#FFFFFF", family="DM Sans, sans-serif", size=12)
         ),
-        transition=dict(duration=700, easing="cubic-in-out"),
+        transition=dict(duration=0),
         uirevision="retailiq-chart"
     )
 
@@ -908,6 +908,28 @@ st.markdown("""
 }
 @media(prefers-reduced-motion:reduce) {
     [data-testid="stPlotlyChart"] { animation:none !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==========================================
+# PERFORMANCE: DISABLE DECORATIVE ANIMATIONS
+# ==========================================
+st.markdown("""
+<style>
+/* Keep the design and interactions, but remove motion-heavy effects. */
+*, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+}
+[data-testid="stPlotlyChart"] .scatterlayer .js-line,
+[data-testid="stPlotlyChart"] .scatterlayer .point {
+    animation: none !important;
+    stroke-dasharray: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
 }
 </style>
 """, unsafe_allow_html=True)
