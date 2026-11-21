@@ -577,6 +577,83 @@ h1, h2, h3, .ri-hero-title, .ri-module-title {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* RetailIQ controls: consistent contrast for dropdowns and upload widgets */
+[data-testid="stAppViewContainer"] [data-baseweb="select"] > div,
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: #211a35 !important;
+    border: 1px solid #8b5acb !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    min-height: 44px !important;
+}
+[data-testid="stAppViewContainer"] [data-baseweb="select"] input,
+[data-testid="stAppViewContainer"] [data-baseweb="select"] span,
+[data-testid="stAppViewContainer"] [data-baseweb="select"] div,
+[data-testid="stSidebar"] [data-baseweb="select"] input,
+[data-testid="stSidebar"] [data-baseweb="select"] span,
+[data-testid="stSidebar"] [data-baseweb="select"] div {
+    color: #ffffff !important;
+}
+[data-baseweb="popover"],
+[data-baseweb="menu"],
+[role="listbox"] {
+    background: #171326 !important;
+    border: 1px solid #8b5acb !important;
+    color: #f8f4ff !important;
+}
+[role="option"],
+[data-baseweb="menu"] li {
+    background: #171326 !important;
+    color: #f8f4ff !important;
+}
+[role="option"]:hover,
+[role="option"][aria-selected="true"],
+[data-baseweb="menu"] li:hover {
+    background: #482477 !important;
+    color: #ffffff !important;
+}
+[data-testid="stFileUploader"] section {
+    background: linear-gradient(135deg, #1b1630, #211a38) !important;
+    border: 1px dashed #a66aff !important;
+    border-radius: 16px !important;
+    color: #f8f4ff !important;
+}
+[data-testid="stFileUploader"] section,
+[data-testid="stFileUploader"] section div,
+[data-testid="stFileUploader"] section span,
+[data-testid="stFileUploader"] section small,
+[data-testid="stFileUploader"] section label {
+    color: #eee6ff !important;
+}
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] button[kind="secondary"],
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+    background: linear-gradient(110deg, #7835d5, #a94fff) !important;
+    color: #ffffff !important;
+    border: 1px solid #bd8aff !important;
+    border-radius: 9px !important;
+    font-weight: 700 !important;
+}
+[data-testid="stFileUploader"] button:hover,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"]:hover {
+    background: linear-gradient(110deg, #8d45ed, #c16aff) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 18px rgba(164, 88, 255, .38) !important;
+}
+[data-testid="stFileUploader"] svg {
+    color: #d8b4fe !important;
+    fill: #d8b4fe !important;
+}
+[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] {
+    background: #211a35 !important;
+    border: 1px solid rgba(177,119,255,.3) !important;
+    border-radius: 10px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown('<div class="ri-brand">RetailIQ <span>AI</span></div>', unsafe_allow_html=True)
 st.caption("Smart Retail Analytics · Business Decision Support")
 
