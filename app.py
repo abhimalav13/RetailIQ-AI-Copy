@@ -491,7 +491,7 @@ hr { border-color: rgba(177, 119, 255, .18) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
+st.markdown("""<style>
 /* Refined typography, motion and landing-page information panels */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 html, body, [class*="css"] {
@@ -556,7 +556,25 @@ h1, h2, h3, .ri-hero-title, .ri-module-title {
 @media(prefers-reduced-motion:reduce) {
   *, *:before, *:after { animation:none !important; transition:none !important; }
 }
-
+[data-testid="stAppViewContainer"] h1,
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3,
+[data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h1,
+[data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h2,
+[data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h3 {
+  color: #F7F4FF !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] {
+  margin-top: .35rem;
+  margin-bottom: 1rem;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+  min-height: 44px;
+  border-radius: 10px !important;
+}
+.ri-hero-title { max-width: 900px; }
+.ri-subtitle { max-width: 760px; }
+</style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="ri-brand">RetailIQ <span>AI</span></div>', unsafe_allow_html=True)
@@ -600,8 +618,8 @@ with hint_col:
     st.markdown(
         '<div class="ri-glass" style="padding:1rem 1.1rem;margin-top:.2rem;">'
         '<div class="ri-panel-title">Ready for your data</div>'
-        '<div class="ri-muted">RetailIQ detects supported retail fields and combines compatible Olist tables automatically.</div>'
-        '<div style="margin-top:.65rem;color:#67e8c1;font-weight:700;font-size:.8rem;">● CSV &nbsp; ● XLSX &nbsp; ● Olist multi-file</div>'
+        '<div class="ri-muted">RetailIQ profiles your data, detects useful business fields and prepares it for analysis.</div>'
+        '<div style="margin-top:.65rem;color:#67e8c1;font-weight:700;font-size:.8rem;">● CSV &nbsp; ● XLSX &nbsp; ● Multiple related files</div>'
         '</div>',
         unsafe_allow_html=True
     )
