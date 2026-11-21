@@ -90,13 +90,13 @@ def _retailiq_style_figure(fig):
                             line=dict(color="#F5EDFF", width=0.7))
             )
         elif trace_type == "bar":
-            # Override any Plotly Express category palette with one consistent tone.
-            trace.update(
-                marker=dict(
-                    color=signal_color,
-                    line=dict(color="rgba(220,195,255,0.22)", width=0.7)
-                )
-            )
+            # Force a scalar colour on every bar trace. Plotly Express may create
+            # multiple traces (one per category); overwrite each trace explicitly.
+            trace.marker.color = signal_color
+            trace.marker.line.color = "rgba(220,195,255,0.22)"
+            trace.marker.line.width = 0.7
+            trace.marker.colorscale = None
+            trace.marker.coloraxis = None
         elif trace_type == "histogram":
             trace.update(
                 marker=dict(color="#8B5CF6",
@@ -137,7 +137,7 @@ def _retailiq_style_figure(fig):
 
 
 def _retailiq_plotly_chart(figure_or_data, *args, **kwargs):
-    """Style all charts centrally without changing their source data."""
+    """Style all Plotly charts centrally, including multi-trace Express figures."""
     styled = _retailiq_style_figure(figure_or_data)
     return _retailiq_original_plotly_chart(styled, *args, **kwargs)
 
@@ -3925,7 +3925,7 @@ if page == "Business Overview":
     )
 
     fig_monthly.update_traces(
-        line=dict(color=teal, width=3),
+        line=dict(color="#A56BFF", width=3),
         marker=dict(size=7),
         hovertemplate=(
             "Month: %{x|%B %Y}<br>"
