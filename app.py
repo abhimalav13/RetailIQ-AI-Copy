@@ -32,14 +32,14 @@ _retailiq_original_plotly_chart = st.plotly_chart
 
 
 def _retailiq_style_figure(fig):
-    """Apply RetailIQ's restrained purple theme with semantic green/red signals."""
+    """Force a consistent purple chart palette; use green/red only for semantic signals."""
     if not hasattr(fig, "update_layout") or not hasattr(fig, "data"):
         return fig
 
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(12, 8, 24, 0)",
-        plot_bgcolor="rgba(24, 15, 42, 0.82)",
+        plot_bgcolor="rgba(28, 17, 46, 0.94)",
         font=dict(family="DM Sans, Segoe UI, sans-serif", color="#F0EAFB", size=12),
         title=dict(font=dict(color="#F7F1FF", size=17), x=0.02, xanchor="left"),
         legend=dict(
@@ -50,122 +50,88 @@ def _retailiq_style_figure(fig):
         ),
         margin=dict(l=28, r=22, t=58, b=38),
         hoverlabel=dict(
-            bgcolor="#211333",
-            bordercolor="#A56BFF",
+            bgcolor="#211333", bordercolor="#A56BFF",
             font=dict(color="#FFFFFF", family="DM Sans, sans-serif", size=12)
         ),
-        transition=dict(duration=850, easing="cubic-in-out"),
+        transition=dict(duration=900, easing="cubic-in-out"),
         uirevision="retailiq-chart"
     )
-
     fig.update_xaxes(
-        showgrid=True, gridcolor="rgba(165, 107, 255, 0.12)",
+        showgrid=True, gridcolor="rgba(165, 107, 255, 0.13)",
         zerolinecolor="rgba(165, 107, 255, 0.2)",
-        linecolor="rgba(165, 107, 255, 0.22)",
-        tickfont=dict(color="#BFB0D4"),
-        title_font=dict(color="#D8C8EC")
+        linecolor="rgba(165, 107, 255, 0.24)",
+        tickfont=dict(color="#BFB0D4"), title_font=dict(color="#D8C8EC")
     )
     fig.update_yaxes(
-        showgrid=True, gridcolor="rgba(165, 107, 255, 0.12)",
+        showgrid=True, gridcolor="rgba(165, 107, 255, 0.13)",
         zerolinecolor="rgba(165, 107, 255, 0.2)",
-        linecolor="rgba(165, 107, 255, 0.22)",
-        tickfont=dict(color="#BFB0D4"),
-        title_font=dict(color="#D8C8EC")
+        linecolor="rgba(165, 107, 255, 0.24)",
+        tickfont=dict(color="#BFB0D4"), title_font=dict(color="#D8C8EC")
     )
 
     for trace in fig.data:
-        trace_type = getattr(trace, "type", "")
+        trace_type = str(getattr(trace, "type", "") or "").lower()
         trace_name = str(getattr(trace, "name", "") or "").lower()
 
-        # Reserve green/red for meaningful business signals, not decoration.
-        if any(word in trace_name for word in ("decline", "negative", "loss", "down", "decrease")):
-            semantic_color = _RETAILIQ_NEGATIVE
-        elif any(word in trace_name for word in ("growth", "positive", "profit", "increase", "up")):
-            semantic_color = _RETAILIQ_POSITIVE
+        # Green/red only when the series explicitly represents a business signal.
+        if any(term in trace_name for term in ("decline", "negative", "loss", "down", "decrease", "below target")):
+            signal_color = "#FF5577"
+        elif any(term in trace_name for term in ("growth", "positive", "profit", "increase", "up", "above target")):
+            signal_color = "#20D997"
+        elif "forecast" in trace_name or "predicted" in trace_name:
+            signal_color = "#20D997"
         else:
-            semantic_color = _RETAILIQ_PURPLE
+            signal_color = "#A56BFF"
 
-        if trace_type == "scatter":
-            line_color = semantic_color
-            if "actual" in trace_name or "revenue" in trace_name or "sales" in trace_name:
-                line_color = _RETAILIQ_PURPLE
-            if "forecast" in trace_name or "predicted" in trace_name:
-                line_color = _RETAILIQ_POSITIVE
+        if trace_type in ("scatter", "scattergl"):
             trace.update(
-                line=dict(color=line_color, width=2.8, shape="linear"),
-                marker=dict(
-                    color=line_color, size=5,
-                    line=dict(color="#F5EDFF", width=0.7)
-                ),
-                hovertemplate=None
+                line=dict(color=signal_color, width=3, shape="linear"),
+                marker=dict(color=signal_color, size=5,
+                            line=dict(color="#F5EDFF", width=0.7))
             )
-
         elif trace_type == "bar":
-            y_values = getattr(trace, "y", None)
-            try:
-                values = [float(v) for v in list(y_values)] if y_values is not None else []
-                # Only use a red/green split when values genuinely cross zero.
-                if values and any(v < 0 for v in values) and any(v >= 0 for v in values):
-                    bar_colors = [
-                        _RETAILIQ_NEGATIVE if value < 0 else _RETAILIQ_POSITIVE
-                        for value in values
-                    ]
-                elif semantic_color in (_RETAILIQ_POSITIVE, _RETAILIQ_NEGATIVE):
-                    bar_colors = semantic_color
-                else:
-                    # One coherent purple colour per chart; no rainbow categories.
-                    bar_colors = _RETAILIQ_PURPLE
-                trace.update(
-                    marker=dict(
-                        color=bar_colors,
-                        line=dict(color="rgba(220,195,255,0.20)", width=0.7)
-                    )
-                )
-            except (TypeError, ValueError):
-                trace.update(marker=dict(color=_RETAILIQ_PURPLE))
-
-        elif trace_type == "pie":
-            # Donut/pie charts are the deliberate exception: categories need
-            # distinguishable slices, while staying within the purple family
-            # plus restrained green/red accents.
+            # Override any Plotly Express category palette with one consistent tone.
             trace.update(
                 marker=dict(
-                    colors=["#8B5CF6", "#B58AF7", "#6335A8", "#20D997",
-                            "#FF5577", "#A56BFF", "#D5B9FF"],
+                    color=signal_color,
+                    line=dict(color="rgba(220,195,255,0.22)", width=0.7)
+                )
+            )
+        elif trace_type == "histogram":
+            trace.update(
+                marker=dict(color="#8B5CF6",
+                            line=dict(color="#C49BFF", width=0.55)),
+                opacity=0.94
+            )
+        elif trace_type == "pie":
+            # Multi-colour slices are intentional for donut/pie charts only.
+            trace.update(
+                marker=dict(
+                    colors=["#6F35C8", "#8B5CF6", "#A56BFF", "#C49BFF",
+                            "#20D997", "#FF5577", "#4B286F"],
                     line=dict(color="#140D22", width=2)
                 ),
                 textfont=dict(color="#F7F1FF")
             )
-
-        elif trace_type == "histogram":
-            trace.update(
-                marker=dict(
-                    color="#8B5CF6",
-                    line=dict(color="#C49BFF", width=0.45)
-                ),
-                opacity=0.92
-            )
-
         elif trace_type in ("heatmap", "contour"):
-            # Diverging values: red = low/negative, purple = neutral,
-            # green = high/positive.
             trace.update(
                 colorscale=[
-                    [0.0, "#B92E52"],
-                    [0.28, "#5A2B83"],
-                    [0.5, "#241638"],
-                    [0.72, "#6335A8"],
-                    [1.0, "#0F9F78"]
+                    [0.0, "#B92E52"], [0.28, "#5A2B83"],
+                    [0.5, "#241638"], [0.72, "#6335A8"], [1.0, "#0F9F78"]
                 ],
                 colorbar=dict(tickfont=dict(color="#D8C8EC"))
             )
-
         elif trace_type == "choropleth":
             trace.update(
                 colorscale=[[0, "#241638"], [0.5, "#6F35C8"], [1, "#C49BFF"]],
-                marker_line_color="#241638",
-                marker_line_width=0.35
+                marker_line_color="#241638", marker_line_width=0.35
             )
+        elif hasattr(trace, "marker"):
+            # Catch uncommon Plotly trace types: default to the brand purple.
+            try:
+                trace.update(marker=dict(color="#A56BFF"))
+            except Exception:
+                pass
 
     return fig
 
@@ -861,6 +827,32 @@ st.markdown("""
 }
 @media(prefers-reduced-motion: reduce) {
     [data-testid="stPlotlyChart"] { animation: none !important; transition: none !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+/* Final chart overrides — RetailIQ purple is the default everywhere */
+[data-testid="stPlotlyChart"] {
+    background: linear-gradient(145deg, #211333 0%, #100B1C 100%) !important;
+    border: 1px solid rgba(165,107,255,.38) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 28px rgba(0,0,0,.26), 0 0 18px rgba(111,53,200,.08) !important;
+    overflow: hidden;
+    animation: ri-chart-enter .8s ease-out both;
+}
+[data-testid="stPlotlyChart"]:hover {
+    border-color: rgba(196,155,255,.72) !important;
+    box-shadow: 0 0 22px rgba(139,92,246,.18), 0 10px 30px rgba(0,0,0,.28) !important;
+}
+@keyframes ri-chart-enter {
+    from { opacity:0; transform:translateY(10px); }
+    to { opacity:1; transform:translateY(0); }
+}
+@media(prefers-reduced-motion:reduce) {
+    [data-testid="stPlotlyChart"] { animation:none !important; }
 }
 </style>
 """, unsafe_allow_html=True)
