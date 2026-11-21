@@ -309,15 +309,261 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-st.image(
-    "ff744770-ea67-497d-916e-55c45b633585.png",
-    width=520
-)
 
-st.caption("Smart Retail Analytics & Business Decision Support")
+st.markdown("""
+<style>
+:root {
+  --ri-bg: #080811;
+  --ri-panel: #11111f;
+  --ri-panel-2: #19182a;
+  --ri-border: rgba(180, 112, 255, .25);
+  --ri-purple: #9b4dff;
+  --ri-violet: #c46bff;
+  --ri-cyan: #4de8ed;
+  --ri-muted: #a9a2bd;
+  --ri-white: #f7f4ff;
+}
+.stApp, [data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(ellipse at 72% 8%, rgba(94, 37, 168, .18), transparent 34%),
+    radial-gradient(ellipse at 5% 90%, rgba(41, 77, 170, .12), transparent 30%),
+    var(--ri-bg) !important;
+  color: var(--ri-white) !important;
+}
+.block-container {
+  max-width: 1700px;
+  padding-top: 1.25rem;
+  padding-bottom: 3rem;
+}
+h1, h2, h3, h4, p, label, [data-testid="stMarkdownContainer"] {
+  color: var(--ri-white);
+}
+h1, h2, h3 { letter-spacing: -.035em; }
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #0b0a14 0%, #111020 100%) !important;
+  border-right: 1px solid rgba(160, 95, 255, .2);
+}
+[data-testid="stSidebar"] * { color: #f3edff; }
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+  background: #171427 !important;
+  border: 1px dashed rgba(184, 119, 255, .65) !important;
+  border-radius: 14px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"],
+[data-testid="stExpander"] {
+  background: #151323 !important;
+  border: 1px solid var(--ri-border) !important;
+  border-radius: 14px !important;
+}
+[data-testid="stSidebar"] [data-testid="stAlert"] {
+  background: #201a35 !important;
+  border: 1px solid rgba(173, 111, 255, .25) !important;
+}
+[data-testid="stSidebar"] [data-testid="stAlert"] * { color: #f7f1ff !important; }
+[data-testid="stSidebar"] [data-testid="stMetric"] {
+  background: #1a1730 !important;
+  border: 1px solid var(--ri-border) !important;
+  box-shadow: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stMetricLabel"],
+[data-testid="stSidebar"] [data-testid="stMetricValue"] { color: #fff !important; }
+[data-testid="stMetric"] {
+  background: linear-gradient(145deg, #191629, #11111e) !important;
+  border: 1px solid rgba(170, 111, 255, .22) !important;
+  border-radius: 17px !important;
+  box-shadow: 0 8px 26px rgba(0,0,0,.22) !important;
+  padding: 18px !important;
+}
+[data-testid="stMetricLabel"] { color: #b8afcb !important; }
+[data-testid="stMetricValue"] { color: #d5a0ff !important; font-weight: 750 !important; }
+.stButton > button, .stDownloadButton > button {
+  background: linear-gradient(110deg, #7c2cff, #b14cff) !important;
+  color: #fff !important;
+  border: 1px solid rgba(220, 180, 255, .25) !important;
+  border-radius: 11px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 5px 22px rgba(142, 61, 255, .22);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(160, 75, 255, .4);
+  filter: brightness(1.12);
+}
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  border: 1px solid var(--ri-border) !important;
+  border-radius: 12px !important;
+}
+[data-testid="stPlotlyChart"] {
+  background: #11111d !important;
+  border: 1px solid var(--ri-border) !important;
+  border-radius: 16px !important;
+  padding: .35rem;
+}
+[data-baseweb="select"] > div, .stTextInput input, .stNumberInput input,
+.stDateInput input, .stMultiSelect [data-baseweb="select"] {
+  background: #171527 !important;
+  color: #f8f4ff !important;
+  border-color: rgba(174, 118, 255, .35) !important;
+}
+[data-testid="stFileUploader"] section {
+  background: linear-gradient(120deg, rgba(104,48,170,.16), rgba(29,39,73,.3)) !important;
+  border: 1px dashed rgba(190, 128, 255, .72) !important;
+  border-radius: 17px !important;
+}
+[data-testid="stFileUploader"] section * { color: #e9dcff !important; }
+[data-testid="stAlert"] {
+  background: #1b1830 !important;
+  border: 1px solid rgba(172, 111, 255, .22) !important;
+  border-radius: 13px !important;
+}
+[data-testid="stAlert"] * { color: #eee7ff !important; }
+[data-testid="stRadio"] label { color: #eee7ff !important; }
+[data-testid="stExpander"] summary { color: #f7f2ff !important; }
+hr { border-color: rgba(177, 119, 255, .18) !important; }
+.ri-brand {
+  font-size: 1.18rem; font-weight: 850; letter-spacing: -.04em;
+  color: #fff; padding: .25rem 0 .8rem;
+}
+.ri-brand span { color: #c16cff; }
+.ri-kicker {
+  display: inline-flex; align-items: center; gap: .45rem;
+  border: 1px solid rgba(177,111,255,.34);
+  background: rgba(123,69,190,.14); border-radius: 999px;
+  padding: .42rem .8rem; color: #d9c5ff; font-size: .78rem;
+  letter-spacing: .04em; margin-bottom: 1rem;
+}
+.ri-hero-title {
+  font-size: clamp(2.25rem, 4vw, 4.1rem); line-height: 1.04;
+  letter-spacing: -.055em; font-weight: 850; color: #fbf8ff;
+  margin: .1rem 0 .9rem;
+}
+.ri-hero-title span {
+  background: linear-gradient(95deg, #a66aff, #e18bff 55%, #6de8f2);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.ri-subtitle { color: #b8b0ca; font-size: 1.02rem; line-height: 1.65; max-width: 720px; }
+.ri-orb-wrap { display:flex; justify-content:center; align-items:center; min-height:280px; }
+.ri-orb {
+  width: min(270px, 70vw); aspect-ratio:1; border-radius:50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,.95) 0 1px, transparent 2px),
+    radial-gradient(circle at 65% 60%, rgba(211,111,255,.85) 0 1px, transparent 2px),
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 8px, rgba(155,74,255,.23) 9px 10px),
+    radial-gradient(circle at 35% 30%, #7b31d8, #28104e 55%, #0a0913 75%);
+  box-shadow: 0 0 25px #9d4dff, 0 0 65px rgba(142,55,255,.55), inset 0 0 38px rgba(220,140,255,.5);
+  position:relative; animation: ri-float 5s ease-in-out infinite;
+}
+.ri-orb:before, .ri-orb:after {
+  content:""; position:absolute; inset:10%; border-radius:50%;
+  border:1px solid rgba(216,161,255,.42); transform:rotate(-25deg) scaleY(.42);
+}
+.ri-orb:after { inset:-5%; transform:rotate(28deg) scaleY(.34); border-color:rgba(84,218,255,.4); }
+@keyframes ri-float { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(-10px) scale(1.025); } }
+.ri-glass {
+  background: linear-gradient(145deg, rgba(34,28,54,.88), rgba(17,16,29,.92));
+  border: 1px solid rgba(174,111,255,.27); border-radius:18px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.04);
+}
+.ri-module {
+  min-height: 158px; padding: 1rem; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.ri-module:hover {
+  transform: translateY(-5px); border-color: rgba(197,127,255,.8);
+  box-shadow: 0 0 24px rgba(151,72,255,.24);
+}
+.ri-module-icon {
+  width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(140deg,rgba(161,76,255,.35),rgba(64,203,255,.12));
+  color:#d7a2ff;font-size:1.35rem;margin-bottom:.8rem;
+  box-shadow:0 0 18px rgba(160,81,255,.22);
+}
+.ri-module-title { font-weight:800;color:#fff;font-size:.98rem;margin-bottom:.35rem; }
+.ri-module-copy { color:#b7aec9;font-size:.79rem;line-height:1.45; }
+.ri-panel-title { font-size:1.04rem;font-weight:800;color:#fbf8ff;margin-bottom:.25rem; }
+.ri-muted { color:#a9a1bb;font-size:.8rem; }
+.ri-mini-row { display:flex;justify-content:space-between;gap:1rem;padding:.65rem 0;border-bottom:1px solid rgba(180,130,240,.12);color:#d9d2e8;font-size:.82rem; }
+.ri-ready { color:#66f0c0;font-weight:700; }
+@media(max-width:900px) {
+  .ri-orb-wrap { min-height:190px; }
+  .ri-orb { width:190px; }
+}
+</style>
+""", unsafe_allow_html=True)
 
-st.sidebar.title("RetailIQ AI")
-st.sidebar.caption("Business Intelligence Platform")
+st.markdown("""
+/* Refined typography, motion and landing-page information panels */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+html, body, [class*="css"] {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif !important;
+}
+h1, h2, h3, .ri-hero-title, .ri-module-title {
+  font-family: 'Space Grotesk', 'DM Sans', sans-serif !important;
+}
+.ri-hero-title, .ri-kicker, .ri-subtitle, .ri-glass, .ri-module,
+[data-testid="stMetric"] {
+  animation: ri-enter .65s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes ri-enter {
+  from { opacity:0; transform:translateY(12px); }
+  to { opacity:1; transform:translateY(0); }
+}
+.ri-module { position:relative; overflow:hidden; }
+.ri-module:before {
+  content:""; position:absolute; inset:-1px; opacity:0;
+  background:linear-gradient(115deg, transparent 20%, rgba(192,130,255,.12), transparent 75%);
+  transform:translateX(-100%); transition:opacity .25s ease;
+}
+.ri-module:hover:before { opacity:1; animation:ri-shimmer 1.1s ease; }
+@keyframes ri-shimmer { to { transform:translateX(100%); } }
+.ri-feature-list { display:grid; grid-template-columns:1fr 1fr; gap:.6rem .9rem; }
+.ri-feature {
+  display:flex; gap:.6rem; align-items:flex-start; color:#e7def7;
+  font-size:.84rem; line-height:1.45; padding:.25rem 0;
+}
+.ri-feature b { color:#fff; font-weight:700; }
+.ri-feature-icon {
+  display:inline-flex; flex:0 0 25px; width:25px; height:25px;
+  align-items:center; justify-content:center; border-radius:8px;
+  color:#e5c6ff; background:rgba(153,82,255,.2);
+  box-shadow:0 0 12px rgba(153,82,255,.15);
+}
+.ri-step {
+  display:flex; gap:.8rem; align-items:center; padding:.9rem;
+  border:1px solid rgba(174,111,255,.24); border-radius:15px;
+  background:linear-gradient(145deg,rgba(34,28,54,.82),rgba(17,16,29,.9));
+  min-height:88px; transition:transform .2s ease,border-color .2s ease;
+}
+.ri-step:hover { transform:translateY(-3px); border-color:rgba(198,133,255,.7); }
+.ri-step-number {
+  display:flex; align-items:center; justify-content:center; flex:0 0 34px;
+  width:34px;height:34px;border-radius:50%;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,#7b2cff,#c45cff);
+  box-shadow:0 0 16px rgba(157,77,255,.4);
+}
+.ri-step-title { color:#fff;font-weight:800;font-size:.9rem; }
+.ri-step-copy { color:#aaa1be;font-size:.76rem;line-height:1.4;margin-top:.15rem; }
+.ri-info-panel {
+  padding:1.1rem 1.15rem; height:100%;
+  background:linear-gradient(145deg,rgba(30,25,48,.9),rgba(15,15,27,.94));
+  border:1px solid rgba(174,111,255,.25); border-radius:17px;
+}
+.ri-info-title { color:#fff;font-size:1rem;font-weight:800;margin-bottom:.65rem; }
+.ri-muted { color:#aaa2bc !important; }
+@media(max-width:800px) {
+  .ri-feature-list { grid-template-columns:1fr; }
+}
+@media(prefers-reduced-motion:reduce) {
+  *, *:before, *:after { animation:none !important; transition:none !important; }
+}
+
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="ri-brand">RetailIQ <span>AI</span></div>', unsafe_allow_html=True)
+st.caption("Smart Retail Analytics · Business Decision Support")
+
+st.sidebar.markdown('<div class="ri-brand">RetailIQ <span>AI</span></div>', unsafe_allow_html=True)
+st.sidebar.caption("SMART RETAIL ANALYTICS")
 
 # CURRENCY CONFIGURATION
 
@@ -339,17 +585,26 @@ selected_currency = st.sidebar.selectbox(
 
 currency_symbol = currency_options[selected_currency]["symbol"]
 
-uploaded_files = st.sidebar.file_uploader(
-    "Upload retail dataset(s)",
-    type=["csv", "xlsx"],
-    accept_multiple_files=True,
-    help="Upload one transaction file, or multiple related Olist CSV files."
-)
-
-st.sidebar.info(
-    "Upload one retail transaction file, or upload related Olist CSV files "
-    "together. RetailIQ AI will detect and combine supported Olist tables."
-)
+st.markdown('<div class="ri-kicker">✦ AI RETAIL ANALYTICS PLATFORM</div>', unsafe_allow_html=True)
+upload_col, hint_col = st.columns([1.35, 1])
+with upload_col:
+    st.markdown('<div class="ri-panel-title">Upload your business data</div><div class="ri-muted">CSV or Excel · Single file or multiple related files</div>', unsafe_allow_html=True)
+    uploaded_files = st.file_uploader(
+        "Drop files here or browse",
+        type=["csv", "xlsx"],
+        accept_multiple_files=True,
+        help="Upload a retail or e-commerce transaction dataset. Related files can be uploaded together when they share business keys.",
+        label_visibility="visible"
+    )
+with hint_col:
+    st.markdown(
+        '<div class="ri-glass" style="padding:1rem 1.1rem;margin-top:.2rem;">'
+        '<div class="ri-panel-title">Ready for your data</div>'
+        '<div class="ri-muted">RetailIQ detects supported retail fields and combines compatible Olist tables automatically.</div>'
+        '<div style="margin-top:.65rem;color:#67e8c1;font-weight:700;font-size:.8rem;">● CSV &nbsp; ● XLSX &nbsp; ● Olist multi-file</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 
 # ==========================================
@@ -390,23 +645,85 @@ def find_uploaded_file(file_map, required_name):
 
 
 if not uploaded_files:
-    st.warning(
-        "Please upload a CSV/Excel transaction file or multiple related Olist CSV files "
-        "using the sidebar to begin."
-    )
-    st.markdown("""
-    ### Welcome to RetailIQ AI
+    hero_left, hero_right = st.columns([1.25, 0.9], gap="large")
+    with hero_left:
+        st.markdown(
+            '<div class="ri-kicker">✦ AI-POWERED RETAIL ANALYTICS PLATFORM</div>'
+            '<div class="ri-hero-title">Turn Your Retail Data Into<br><span>Actionable Business Insights</span></div>'
+            '<div class="ri-subtitle">A unified workspace to understand performance, explore sales trends, '
+            'analyse customers and products, forecast demand, and make confident business decisions — '
+            'using your own retail dataset.</div>',
+            unsafe_allow_html=True
+        )
+        st.write("")
+        st.markdown(
+            '<div class="ri-muted">Built for retail and e-commerce teams that want to move from raw data '
+            'to clear, practical decisions.</div>',
+            unsafe_allow_html=True
+        )
+    with hero_right:
+        st.markdown('<div class="ri-orb-wrap"><div class="ri-orb"></div></div>', unsafe_allow_html=True)
 
-    Analyse your retail business with:
-    - Sales and revenue intelligence
-    - Product performance analytics
-    - Market analysis
-    - Sales forecasting
-    - Business recommendations
+    st.markdown("### Explore what RetailIQ can do")
+    module_data = [
+        ("▥", "Business Overview", "See your key KPIs, revenue, orders and overall business health."),
+        ("↗", "Sales Analytics", "Track sales trends, compare periods and understand what drives revenue."),
+        ("⬡", "Product Intelligence", "Find leading products, category performance and demand patterns."),
+        ("⌖", "Market Analysis", "Compare regions, customer segments and market contribution."),
+        ("⌁", "Sales Forecast", "Use historical patterns to estimate future sales and plan ahead."),
+        ("✧", "AI Business Advisor", "Turn detected business signals into prioritised actions and recommendations.")
+    ]
+    module_cols = st.columns(3)
+    for idx, (icon_text, title_text, copy_text) in enumerate(module_data):
+        with module_cols[idx % 3]:
+            st.markdown(
+                f'<div class="ri-glass ri-module"><div class="ri-module-icon">{icon_text}</div>'
+                f'<div class="ri-module-title">{title_text}</div><div class="ri-module-copy">{copy_text}</div></div>',
+                unsafe_allow_html=True
+            )
 
-    **Getting started:** Upload your retail transaction data. For Olist, select the
-    orders, order-items, products and customers CSV files together.
-    """)
+    st.markdown("")
+    feature_col, format_col = st.columns([1.2, 0.8], gap="large")
+    with feature_col:
+        st.markdown(
+            '<div class="ri-info-panel"><div class="ri-info-title">✦ What happens when you upload data?</div>'
+            '<div class="ri-feature-list">'
+            '<div class="ri-feature"><span class="ri-feature-icon">✓</span><span><b>Automatic profiling</b><br>Understand rows, columns, missing values and data types.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">⌕</span><span><b>Smart field detection</b><br>Identify dates, revenue, products, customers and other useful fields.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">▤</span><span><b>Interactive analytics</b><br>Explore KPIs, charts, segments and business performance.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">↗</span><span><b>Predictive analysis</b><br>Review sales forecasts and customer behaviour models where data allows.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">✧</span><span><b>Business recommendations</b><br>See evidence-backed insights and practical next steps.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">⇩</span><span><b>Export your findings</b><br>Download analysis tables and reports for further use.</span></div>'
+            '</div></div>',
+            unsafe_allow_html=True
+        )
+    with format_col:
+        st.markdown(
+            '<div class="ri-info-panel"><div class="ri-info-title">Supported data formats</div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">CSV</span><span><b>CSV files</b><br>Transaction and structured tabular data.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">XLS</span><span><b>Excel files</b><br>Spreadsheet-based business data.</span></div>'
+            '<div class="ri-feature"><span class="ri-feature-icon">＋</span><span><b>Multiple related files</b><br>Upload tables together when they connect through common identifiers.</span></div>'
+            '<hr style="border-color:rgba(177,119,255,.18);margin:1rem 0;">'
+            '<div class="ri-muted">Best results come from clear column headers, consistent dates and meaningful transaction records. '
+            'Available analysis depends on the fields and data quality in your upload.</div></div>',
+            unsafe_allow_html=True
+        )
+
+    st.markdown("### How it works")
+    step_cols = st.columns(3)
+    steps = [
+        ("1", "Upload your data", "Add a CSV, Excel file or related business tables."),
+        ("2", "Prepare automatically", "RetailIQ profiles the data and detects useful fields."),
+        ("3", "Explore insights", "Open dashboards, forecasts and recommendations.")
+    ]
+    for col, (number, title, copy) in zip(step_cols, steps):
+        with col:
+            st.markdown(
+                f'<div class="ri-step"><div class="ri-step-number">{number}</div>'
+                f'<div><div class="ri-step-title">{title}</div><div class="ri-step-copy">{copy}</div></div></div>',
+                unsafe_allow_html=True
+            )
+    st.caption("Upload your dataset above to get started. RetailIQ adapts its analysis to the columns and information available.")
     st.stop()
 
 
@@ -3091,9 +3408,8 @@ daily = daily.reindex(
 # SIDEBAR NAVIGATION
 # ==========================================
 
-page = st.sidebar.radio(
-    "Navigation",
-    [
+page_options = [
+        "Home",
         "Business Overview",
         "Sales Analytics",
         "Product Intelligence",
@@ -3101,9 +3417,17 @@ page = st.sidebar.radio(
         "Sales Forecast",
         "AI Business Advisor"
     ]
+page = st.sidebar.radio(
+    "Navigation",
+    page_options,
+    index=page_options.index(st.session_state.get("retailiq_selected_page", "Home"))
+    if st.session_state.get("retailiq_selected_page", "Home") in page_options else 0,
+    key="retailiq_navigation"
 )
+st.session_state["retailiq_selected_page"] = page
 
 page_descriptions = {
+    "Home": "Your retail intelligence workspace at a glance.",
     "Business Overview": "A high-level view of revenue, orders, customers and overall performance.",
     "Sales Analytics": "Explore sales trends, order patterns and revenue movement.",
     "Product Intelligence": "Understand product contribution, demand and performance.",
@@ -3119,6 +3443,73 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.divider()
+
+# ==========================================
+# HOME: RETAILIQ AI WORKSPACE
+# ==========================================
+
+if page == "Home":
+    home_left, home_right = st.columns([1.65, 0.85], gap="large")
+    with home_left:
+        st.markdown(
+            '<div class="ri-kicker">✦ AI RETAIL ANALYTICS PLATFORM</div>'
+            '<div class="ri-hero-title">Turn Your Retail Data<br>Into <span>Powerful Insights</span></div>'
+            '<div class="ri-subtitle">Explore your retail performance, discover customer behaviour, '
+            'track product and market trends, and make smarter decisions with RetailIQ AI.</div>',
+            unsafe_allow_html=True
+        )
+    with home_right:
+        st.markdown('<div class="ri-orb-wrap"><div class="ri-orb"></div></div>', unsafe_allow_html=True)
+
+    st.markdown("### Explore what you can do")
+    home_modules = [
+        ("▥", "Business Overview", "Key metrics and performance", "Business Overview"),
+        ("↗", "Sales Analytics", "Revenue, orders and growth", "Sales Analytics"),
+        ("⬡", "Product Intelligence", "Products and categories", "Product Intelligence"),
+        ("⌖", "Market Analysis", "Markets and geography", "Market Analysis"),
+        ("⌁", "Sales Forecast", "Future sales projections", "Sales Forecast"),
+        ("✧", "AI Business Advisor", "Insights and recommendations", "AI Business Advisor")
+    ]
+    home_cols = st.columns(6)
+    for idx, (icon_text, title_text, copy_text, page_name) in enumerate(home_modules):
+        with home_cols[idx]:
+            st.markdown(
+                f'<div class="ri-glass ri-module"><div class="ri-module-icon">{icon_text}</div>'
+                f'<div class="ri-module-title">{title_text}</div>'
+                f'<div class="ri-module-copy">{copy_text}</div></div>',
+                unsafe_allow_html=True
+            )
+            if st.button("Open →", key=f"home_open_{idx}", use_container_width=True):
+                st.session_state["retailiq_selected_page"] = page_name
+                st.session_state["retailiq_navigation"] = page_name
+                st.rerun()
+
+    st.markdown("### Your business at a glance")
+    summary_col, files_col = st.columns([1.45, 1], gap="large")
+    with summary_col:
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total Revenue", f"{currency_symbol}{total_revenue:,.0f}")
+        k2.metric("Total Orders", f"{total_orders:,}")
+        k3.metric("Customers", f"{total_customers:,}")
+        k4.metric("Products", f"{total_products:,}")
+        st.caption("Live metrics calculated from the currently uploaded and processed dataset.")
+    with files_col:
+        st.markdown('<div class="ri-glass" style="padding:1rem 1.1rem;">'
+                    '<div class="ri-panel-title">✦ Your data workspace</div>'
+                    '<div class="ri-mini-row"><span>Uploaded tables</span><b>' +
+                    f'{len(uploaded_data):,}' +
+                    '</b></div><div class="ri-mini-row"><span>Total uploaded rows</span><b>' +
+                    f'{uploaded_table_rows:,}' +
+                    '</b></div><div class="ri-mini-row"><span>Data status</span><b class="ri-ready">Ready</b></div>'
+                    '</div>', unsafe_allow_html=True)
+        st.write("")
+        st.markdown('<div class="ri-panel-title">Recent datasets</div>', unsafe_allow_html=True)
+        for table_name, table_frame in list(uploaded_data.items())[:4]:
+            st.markdown(
+                f'<div class="ri-mini-row"><span>▤ &nbsp; {table_name}</span>'
+                f'<b>{len(table_frame):,} rows</b></div>',
+                unsafe_allow_html=True
+            )
 
 # ==========================================
 # PAGE 1: BUSINESS OVERVIEW
