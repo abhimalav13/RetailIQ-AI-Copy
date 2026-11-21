@@ -20,41 +20,38 @@ st.set_page_config(
 # ==========================================
 # RETAILIQ AI — FUTURISTIC ANALYTICS CHART ENGINE
 # ==========================================
-_RETAILIQ_PLOTLY_PALETTE = [
-    "#12D6A7",  # emerald green
-    "#12CBEA",  # electric cyan
-    "#368BFF",  # electric blue
-    "#8B5CF6",  # violet
-    "#D05CFF",  # magenta
-    "#F5B942",  # amber
-]
-_RETAILIQ_POSITIVE = "#12D6A7"
-_RETAILIQ_NEGATIVE = "#FF4D6D"
-_RETAILIQ_NEUTRAL = "#36B9F6"
+_RETAILIQ_PURPLE = "#A56BFF"
+_RETAILIQ_PURPLE_LIGHT = "#C49BFF"
+_RETAILIQ_PURPLE_DARK = "#6F35C8"
+_RETAILIQ_PURPLE_DEEP = "#321B55"
+_RETAILIQ_POSITIVE = "#20D997"
+_RETAILIQ_POSITIVE_SOFT = "#0F9F78"
+_RETAILIQ_NEGATIVE = "#FF5577"
+_RETAILIQ_NEGATIVE_SOFT = "#B92E52"
 _retailiq_original_plotly_chart = st.plotly_chart
 
 
 def _retailiq_style_figure(fig):
-    """Apply a consistent dark analytical theme to Plotly figures."""
+    """Apply RetailIQ's restrained purple theme with semantic green/red signals."""
     if not hasattr(fig, "update_layout") or not hasattr(fig, "data"):
         return fig
 
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor="rgba(8, 10, 20, 0)",
-        plot_bgcolor="rgba(10, 14, 28, 0.78)",
-        font=dict(family="DM Sans, Segoe UI, sans-serif", color="#E9E7F2", size=12),
-        title=dict(font=dict(color="#F7F4FF", size=17), x=0.02, xanchor="left"),
+        paper_bgcolor="rgba(12, 8, 24, 0)",
+        plot_bgcolor="rgba(24, 15, 42, 0.82)",
+        font=dict(family="DM Sans, Segoe UI, sans-serif", color="#F0EAFB", size=12),
+        title=dict(font=dict(color="#F7F1FF", size=17), x=0.02, xanchor="left"),
         legend=dict(
-            bgcolor="rgba(14, 18, 34, 0.72)",
-            bordercolor="rgba(139, 92, 246, 0.18)",
+            bgcolor="rgba(28, 17, 48, 0.82)",
+            bordercolor="rgba(165, 107, 255, 0.22)",
             borderwidth=1,
-            font=dict(color="#D9D5E7", size=11)
+            font=dict(color="#E5D8F8", size=11)
         ),
         margin=dict(l=28, r=22, t=58, b=38),
         hoverlabel=dict(
-            bgcolor="#17152A",
-            bordercolor="#8B5CF6",
+            bgcolor="#211333",
+            bordercolor="#A56BFF",
             font=dict(color="#FFFFFF", family="DM Sans, sans-serif", size=12)
         ),
         transition=dict(duration=850, easing="cubic-in-out"),
@@ -62,90 +59,111 @@ def _retailiq_style_figure(fig):
     )
 
     fig.update_xaxes(
-        showgrid=True, gridcolor="rgba(112, 130, 170, 0.13)",
-        zerolinecolor="rgba(112, 130, 170, 0.2)",
-        linecolor="rgba(135, 150, 190, 0.22)",
-        tickfont=dict(color="#AAAFC4"),
-        title_font=dict(color="#C8C4D8")
+        showgrid=True, gridcolor="rgba(165, 107, 255, 0.12)",
+        zerolinecolor="rgba(165, 107, 255, 0.2)",
+        linecolor="rgba(165, 107, 255, 0.22)",
+        tickfont=dict(color="#BFB0D4"),
+        title_font=dict(color="#D8C8EC")
     )
     fig.update_yaxes(
-        showgrid=True, gridcolor="rgba(112, 130, 170, 0.13)",
-        zerolinecolor="rgba(112, 130, 170, 0.2)",
-        linecolor="rgba(135, 150, 190, 0.22)",
-        tickfont=dict(color="#AAAFC4"),
-        title_font=dict(color="#C8C4D8")
+        showgrid=True, gridcolor="rgba(165, 107, 255, 0.12)",
+        zerolinecolor="rgba(165, 107, 255, 0.2)",
+        linecolor="rgba(165, 107, 255, 0.22)",
+        tickfont=dict(color="#BFB0D4"),
+        title_font=dict(color="#D8C8EC")
     )
 
-    for trace_index, trace in enumerate(fig.data):
+    for trace in fig.data:
         trace_type = getattr(trace, "type", "")
         trace_name = str(getattr(trace, "name", "") or "").lower()
 
+        # Reserve green/red for meaningful business signals, not decoration.
+        if any(word in trace_name for word in ("decline", "negative", "loss", "down", "decrease")):
+            semantic_color = _RETAILIQ_NEGATIVE
+        elif any(word in trace_name for word in ("growth", "positive", "profit", "increase", "up")):
+            semantic_color = _RETAILIQ_POSITIVE
+        else:
+            semantic_color = _RETAILIQ_PURPLE
+
         if trace_type == "scatter":
-            if any(word in trace_name for word in ("actual", "revenue", "sales")):
-                line_color = _RETAILIQ_NEUTRAL
-            elif any(word in trace_name for word in ("forecast", "predicted", "target")):
-                line_color = _RETAILIQ_NEGATIVE if "predicted" in trace_name else "#A970FF"
-            else:
-                line_color = _RETAILIQ_PLOTLY_PALETTE[trace_index % len(_RETAILIQ_PLOTLY_PALETTE)]
+            line_color = semantic_color
+            if "actual" in trace_name or "revenue" in trace_name or "sales" in trace_name:
+                line_color = _RETAILIQ_PURPLE
+            if "forecast" in trace_name or "predicted" in trace_name:
+                line_color = _RETAILIQ_POSITIVE
             trace.update(
-                line=dict(color=line_color, width=2.8, shape="spline"),
+                line=dict(color=line_color, width=2.8, shape="linear"),
                 marker=dict(
-                    color=line_color, size=6,
-                    line=dict(color="#F7F4FF", width=0.7)
+                    color=line_color, size=5,
+                    line=dict(color="#F5EDFF", width=0.7)
                 ),
                 hovertemplate=None
             )
+
         elif trace_type == "bar":
             y_values = getattr(trace, "y", None)
             try:
                 values = [float(v) for v in list(y_values)] if y_values is not None else []
+                # Only use a red/green split when values genuinely cross zero.
                 if values and any(v < 0 for v in values) and any(v >= 0 for v in values):
-                    bar_colors = [_RETAILIQ_NEGATIVE if v < 0 else _RETAILIQ_POSITIVE for v in values]
-                else:
                     bar_colors = [
-                        _RETAILIQ_PLOTLY_PALETTE[i % len(_RETAILIQ_PLOTLY_PALETTE)]
-                        for i in range(len(values))
-                    ] if values else _RETAILIQ_NEUTRAL
+                        _RETAILIQ_NEGATIVE if value < 0 else _RETAILIQ_POSITIVE
+                        for value in values
+                    ]
+                elif semantic_color in (_RETAILIQ_POSITIVE, _RETAILIQ_NEGATIVE):
+                    bar_colors = semantic_color
+                else:
+                    # One coherent purple colour per chart; no rainbow categories.
+                    bar_colors = _RETAILIQ_PURPLE
                 trace.update(
                     marker=dict(
                         color=bar_colors,
-                        line=dict(color="rgba(255,255,255,0.12)", width=0.7)
+                        line=dict(color="rgba(220,195,255,0.20)", width=0.7)
                     )
                 )
             except (TypeError, ValueError):
-                trace.update(marker=dict(color=_RETAILIQ_NEUTRAL))
+                trace.update(marker=dict(color=_RETAILIQ_PURPLE))
+
         elif trace_type == "pie":
+            # Donut/pie charts are the deliberate exception: categories need
+            # distinguishable slices, while staying within the purple family
+            # plus restrained green/red accents.
             trace.update(
                 marker=dict(
-                    colors=["#12D6A7", "#FF4D6D", "#12CBEA", "#8B5CF6",
-                            "#F5B942", "#368BFF", "#D05CFF"],
-                    line=dict(color="#0B0D18", width=2)
+                    colors=["#8B5CF6", "#B58AF7", "#6335A8", "#20D997",
+                            "#FF5577", "#A56BFF", "#D5B9FF"],
+                    line=dict(color="#140D22", width=2)
                 ),
-                textfont=dict(color="#F7F4FF")
+                textfont=dict(color="#F7F1FF")
             )
+
         elif trace_type == "histogram":
             trace.update(
                 marker=dict(
-                    color="#368BFF",
-                    line=dict(color="#12CBEA", width=0.5)
+                    color="#8B5CF6",
+                    line=dict(color="#C49BFF", width=0.45)
                 ),
-                opacity=0.88
+                opacity=0.92
             )
+
         elif trace_type in ("heatmap", "contour"):
+            # Diverging values: red = low/negative, purple = neutral,
+            # green = high/positive.
             trace.update(
                 colorscale=[
-                    [0.0, "#FF4D6D"],
-                    [0.25, "#8B5CF6"],
-                    [0.5, "#17213A"],
-                    [0.75, "#168FC4"],
-                    [1.0, "#12D6A7"]
+                    [0.0, "#B92E52"],
+                    [0.28, "#5A2B83"],
+                    [0.5, "#241638"],
+                    [0.72, "#6335A8"],
+                    [1.0, "#0F9F78"]
                 ],
-                colorbar=dict(tickfont=dict(color="#D8D5E4"))
+                colorbar=dict(tickfont=dict(color="#D8C8EC"))
             )
+
         elif trace_type == "choropleth":
             trace.update(
-                colorscale=[[0, "#17213A"], [0.45, "#368BFF"], [1, "#12D6A7"]],
-                marker_line_color="#111827",
+                colorscale=[[0, "#241638"], [0.5, "#6F35C8"], [1, "#C49BFF"]],
+                marker_line_color="#241638",
                 marker_line_width=0.35
             )
 
@@ -805,17 +823,17 @@ st.markdown("""
 <style>
 /* Futuristic chart panels and soft entrance motion */
 [data-testid="stPlotlyChart"] {
-    background: linear-gradient(145deg, rgba(15,20,38,.96), rgba(9,13,26,.98)) !important;
-    border: 1px solid rgba(67, 125, 210, .28) !important;
+    background: linear-gradient(145deg, rgba(31,19,51,.98), rgba(15,10,27,.99)) !important;
+    border: 1px solid rgba(165, 107, 255, .30) !important;
     border-radius: 16px !important;
-    box-shadow: 0 8px 28px rgba(0,0,0,.24), inset 0 1px rgba(255,255,255,.025) !important;
+    box-shadow: 0 8px 28px rgba(0,0,0,.24), inset 0 1px rgba(220,190,255,.035) !important;
     overflow: hidden;
     animation: ri-chart-enter .75s cubic-bezier(.2,.7,.2,1) both;
     transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
 }
 [data-testid="stPlotlyChart"]:hover {
-    border-color: rgba(18, 203, 234, .48) !important;
-    box-shadow: 0 0 22px rgba(18, 139, 255, .13), 0 10px 30px rgba(0,0,0,.28) !important;
+    border-color: rgba(165, 107, 255, .62) !important;
+    box-shadow: 0 0 22px rgba(139, 92, 246, .17), 0 10px 30px rgba(0,0,0,.28) !important;
     transform: translateY(-2px);
 }
 @keyframes ri-chart-enter {
@@ -829,7 +847,7 @@ st.markdown("""
 [data-testid="stPlotlyChart"] .scatterlayer .js-line {
     stroke-dasharray: 1600;
     stroke-dashoffset: 1600;
-    animation: ri-line-reveal 2.1s cubic-bezier(.35,.05,.25,1) forwards;
+    animation: ri-line-reveal 2.1s cubic-bezier(.35,.05,.25,1) forwards; filter: drop-shadow(0 0 4px rgba(165,107,255,.38));
 }
 [data-testid="stPlotlyChart"] .scatterlayer .point {
     opacity: 0;
