@@ -32,9 +32,15 @@ _retailiq_original_plotly_chart = st.plotly_chart
 
 
 def _retailiq_style_figure(fig):
-    """Force a consistent purple chart palette; use green/red only for semantic signals."""
+    """Apply one consistent RetailIQ chart system to every Plotly figure."""
     if not hasattr(fig, "update_layout") or not hasattr(fig, "data"):
         return fig
+
+    purple = "#A56BFF"
+    purple_light = "#C49BFF"
+    purple_dark = "#6F35C8"
+    green = "#20D997"
+    red = "#FF5577"
 
     fig.update_layout(
         template="plotly_dark",
@@ -50,12 +56,25 @@ def _retailiq_style_figure(fig):
         ),
         margin=dict(l=28, r=22, t=58, b=38),
         hoverlabel=dict(
-            bgcolor="#211333", bordercolor="#A56BFF",
+            bgcolor="#211333", bordercolor=purple,
             font=dict(color="#FFFFFF", family="DM Sans, sans-serif", size=12)
         ),
-        transition=dict(duration=900, easing="cubic-in-out"),
+        transition=dict(duration=700, easing="cubic-in-out"),
         uirevision="retailiq-chart"
     )
+
+    # Override layout-level continuous colour axes too; trace-level colourscale
+    # settings alone do not override traces linked to layout.coloraxis.
+    for axis_name in ("coloraxis", "coloraxis2", "coloraxis3"):
+        if axis_name in fig.layout:
+            fig.layout[axis_name].update(
+                colorscale=[
+                    [0.0, "#3B183F"], [0.25, "#5A2B83"],
+                    [0.5, "#241638"], [0.75, "#8B5CF6"], [1.0, "#C49BFF"]
+                ],
+                colorbar=dict(tickfont=dict(color="#D8C8EC"))
+            )
+
     fig.update_xaxes(
         showgrid=True, gridcolor="rgba(165, 107, 255, 0.13)",
         zerolinecolor="rgba(165, 107, 255, 0.2)",
@@ -69,50 +88,77 @@ def _retailiq_style_figure(fig):
         tickfont=dict(color="#BFB0D4"), title_font=dict(color="#D8C8EC")
     )
 
+    donut_colors = [
+        "#6F35C8", "#8B5CF6", "#A56BFF", "#C49BFF",
+        "#20D997", "#FF5577", "#4B286F", "#7650A8"
+    ]
+
     for trace in fig.data:
         trace_type = str(getattr(trace, "type", "") or "").lower()
-        trace_name = str(getattr(trace, "name", "") or "").lower()
+        trace_name = str(getattr(trace, "name", "") or "").casefold()
 
-        # Green/red only when the series explicitly represents a business signal.
-        if any(term in trace_name for term in ("decline", "negative", "loss", "down", "decrease", "below target")):
-            signal_color = "#FF5577"
-        elif any(term in trace_name for term in ("growth", "positive", "profit", "increase", "up", "above target")):
-            signal_color = "#20D997"
-        elif "forecast" in trace_name or "predicted" in trace_name:
-            signal_color = "#20D997"
+        # Red/green are reserved for explicitly meaningful business signals.
+        if any(term in trace_name for term in (
+            "decline", "negative", "loss", "down", "decrease", "below target"
+        )):
+            signal_color = red
+        elif any(term in trace_name for term in (
+            "growth", "positive", "profit", "increase", "up", "above target",
+            "forecast", "predicted"
+        )):
+            signal_color = green
         else:
-            signal_color = "#A56BFF"
+            signal_color = purple
 
         if trace_type in ("scatter", "scattergl"):
+            # Markers make isolated/zero observations visible. Do not connect
+            # across NaN gaps: those gaps may represent genuinely missing data.
             trace.update(
-                line=dict(color=signal_color, width=3, shape="linear"),
-                marker=dict(color=signal_color, size=5,
-                            line=dict(color="#F5EDFF", width=0.7))
+                line=dict(color=signal_color, width=3),
+                marker=dict(
+                    color=signal_color, size=5,
+                    line=dict(color="#F5EDFF", width=0.6)
+                )
             )
+            if (
+                getattr(trace, "fill", None) not in (None, "none")
+                or getattr(trace, "stackgroup", None)
+            ):
+                trace.fillcolor = (
+                    "rgba(165,107,255,0.18)" if signal_color == purple
+                    else "rgba(32,217,151,0.14)" if signal_color == green
+                    else "rgba(255,85,119,0.14)"
+                )
+
         elif trace_type == "bar":
-            # Force a scalar colour on every bar trace. Plotly Express may create
-            # multiple traces (one per category); overwrite each trace explicitly.
+            # Force one solid brand colour, even if the original chart used
+            # Plotly Express category or continuous colour mapping.
             trace.marker.color = signal_color
-            trace.marker.line.color = "rgba(220,195,255,0.22)"
+            trace.marker.line.color = "rgba(220,195,255,0.24)"
             trace.marker.line.width = 0.7
             trace.marker.colorscale = None
             trace.marker.coloraxis = None
+
         elif trace_type == "histogram":
             trace.update(
-                marker=dict(color="#8B5CF6",
-                            line=dict(color="#C49BFF", width=0.55)),
-                opacity=0.94
+                marker=dict(
+                    color=purple_dark,
+                    line=dict(color=purple_light, width=0.65)
+                ),
+                opacity=0.96
             )
+
         elif trace_type == "pie":
-            # Multi-colour slices are intentional for donut/pie charts only.
+            # Donut/pie charts are the one intentional exception to the
+            # single-colour chart rule.
             trace.update(
                 marker=dict(
-                    colors=["#6F35C8", "#8B5CF6", "#A56BFF", "#C49BFF",
-                            "#20D997", "#FF5577", "#4B286F"],
+                    colors=donut_colors,
                     line=dict(color="#140D22", width=2)
                 ),
                 textfont=dict(color="#F7F1FF")
             )
+
         elif trace_type in ("heatmap", "contour"):
             trace.update(
                 colorscale=[
@@ -121,20 +167,29 @@ def _retailiq_style_figure(fig):
                 ],
                 colorbar=dict(tickfont=dict(color="#D8C8EC"))
             )
+
         elif trace_type == "choropleth":
             trace.update(
-                colorscale=[[0, "#241638"], [0.5, "#6F35C8"], [1, "#C49BFF"]],
-                marker_line_color="#241638", marker_line_width=0.35
+                colorscale=[
+                    [0.0, "#241638"], [0.5, "#6F35C8"], [1.0, "#C49BFF"]
+                ],
+                marker_line_color="#241638",
+                marker_line_width=0.35
             )
-        elif hasattr(trace, "marker"):
-            # Catch uncommon Plotly trace types: default to the brand purple.
+
+        elif trace_type in ("scattergeo", "scattermap", "scattermapbox"):
             try:
-                trace.update(marker=dict(color="#A56BFF"))
+                trace.update(marker=dict(color=signal_color, size=8))
+            except Exception:
+                pass
+
+        elif hasattr(trace, "marker"):
+            try:
+                trace.update(marker=dict(color=purple))
             except Exception:
                 pass
 
     return fig
-
 
 def _retailiq_plotly_chart(figure_or_data, *args, **kwargs):
     """Style all Plotly charts centrally, including multi-trace Express figures."""
@@ -964,14 +1019,13 @@ with hint_col:
 import io
 import os
 
-@st.cache_data
 def load_data(file_bytes, file_name):
     """Read CSVs with common encodings; leave Excel handling unchanged."""
     if file_name.lower().endswith(".csv"):
         last_error = None
         for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
             try:
-                return pd.read_csv(io.BytesIO(file_bytes), encoding=encoding, low_memory=False)
+                return pd.read_csv(io.BytesIO(file_bytes), encoding=encoding, low_memory=True)
             except UnicodeDecodeError as exc:
                 last_error = exc
         raise ValueError(
@@ -993,6 +1047,21 @@ def find_uploaded_file(file_map, required_name):
             return dataframe
     return None
 
+
+
+# Stability guard: keep combined uploaded source files within a conservative
+# memory budget on the hosted Streamlit instance.
+MAX_TOTAL_UPLOAD_MB = 100
+total_upload_bytes = sum(int(getattr(file, "size", 0) or 0) for file in uploaded_files)
+total_upload_mb = total_upload_bytes / (1024 * 1024)
+if total_upload_mb > MAX_TOTAL_UPLOAD_MB:
+    st.error(
+        f"These files total {total_upload_mb:.1f} MB. The current hosted app is "
+        f"configured for up to {MAX_TOTAL_UPLOAD_MB} MB per upload session to "
+        "protect memory. Please upload a smaller extract or split the analysis into "
+        "smaller related files."
+    )
+    st.stop()
 
 if not uploaded_files:
     hero_left, hero_right = st.columns([1.25, 0.9], gap="large")
@@ -1158,13 +1227,13 @@ with st.sidebar.expander("App & data readiness", expanded=False):
 import re
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _cached_csv_export(frame):
     """Cache CSV serialization for unchanged analysis tables."""
     return frame.to_csv(index=False)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _cached_visual_sample(frame, columns, sample_size=50000):
     """Return a deterministic sample for charts when datasets are very large."""
     selected = frame.loc[:, list(columns)]
@@ -1173,7 +1242,7 @@ def _cached_visual_sample(frame, columns, sample_size=50000):
     return selected.sample(n=sample_size, random_state=42)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _cached_numeric_correlation(frame, columns, sample_size=50000):
     """Calculate correlation on all rows for small data and a stable sample for large data."""
     sample = _cached_visual_sample(frame, list(columns), sample_size)
@@ -1181,7 +1250,7 @@ def _cached_numeric_correlation(frame, columns, sample_size=50000):
     return numeric.corr()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _cached_monthly_trend(frame, date_col, measure, aggregation):
     """Aggregate the full dataset to monthly values and cache the result."""
     temp = frame[[date_col, measure]].copy()
@@ -1233,7 +1302,7 @@ def _is_flag_name(column):
     return any(_clean_name(token) in name for token in flag_tokens)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _profile_table(frame):
     profile = {
         "rows": len(frame), "columns": len(frame.columns), "numeric": [],
@@ -1303,7 +1372,7 @@ def _find_column(frame, aliases):
     return None
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _semantic_column_mapping(frame):
     """Suggest business roles from common column-name synonyms, with type checks."""
     role_aliases = {
@@ -1381,7 +1450,7 @@ def _semantic_column_mapping(frame):
     return mappings
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _generate_business_insights(frame, roles):
     """Generate deterministic observations only when supporting columns/data exist."""
     insights = []
@@ -1464,7 +1533,7 @@ def _generate_business_insights(frame, roles):
 
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _generate_business_recommendations(frame, roles):
     """Create transparent, rule-based actions from validated business roles."""
     recommendations = []
@@ -1538,7 +1607,7 @@ def _generate_business_recommendations(frame, roles):
             "No strong rule-based action was triggered by the detected fields. Review the column mapping and collect enough date, category and outcome data to support deeper analysis."))
     return recommendations
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _build_data_quality_report(frame, profile):
     """Create non-destructive data-quality diagnostics; never alter source rows."""
     rows = []
@@ -1577,7 +1646,7 @@ def _build_data_quality_report(frame, profile):
     return pd.DataFrame(rows)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _recommend_chart_types(frame, profile, roles):
     """Recommend chart forms from detected field roles and cardinality."""
     recommendations = []
@@ -1603,7 +1672,7 @@ def _recommend_chart_types(frame, profile, roles):
 
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _calculate_rfm_analysis(frame, roles):
     """Build customer-level Recency, Frequency and Monetary metrics from validated fields."""
     customer_col = roles.get("Customer")
@@ -1677,7 +1746,7 @@ def _calculate_rfm_analysis(frame, roles):
     return rfm, frequency_note
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _calculate_customer_cohorts(frame, roles):
     """Calculate monthly customer cohorts and their subsequent active-month retention."""
     customer_col = roles.get("Customer")
@@ -1708,7 +1777,7 @@ def _calculate_customer_cohorts(frame, roles):
     return retention.round(1), "Retention is the share of each first-purchase cohort active in each subsequent calendar month."
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _calculate_advanced_customer_intelligence(frame, roles):
     """Calculate historical customer value, repeat-purchase and revenue-concentration metrics."""
     customer_col = roles.get("Customer")
@@ -1782,7 +1851,7 @@ def _calculate_advanced_customer_intelligence(frame, roles):
     return summary, "Customer value metrics describe historical activity in the selected dataset; they are not forward-looking lifetime value predictions."
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _train_churn_classification(frame, roles):
     """Train a transparent logistic classifier when a valid binary churn target exists."""
     target_col = roles.get("Churn / Attrition")
@@ -1796,6 +1865,21 @@ def _train_churn_classification(frame, roles):
     recognized = normalized.isin(positive_values | negative_values)
     data = frame.loc[recognized].copy()
     y = normalized.loc[recognized].isin(positive_values).astype(int).to_numpy()
+
+    # Bound model matrix memory on large uploads; use a deterministic,
+    # class-stratified sample so both outcome classes remain represented.
+    max_model_rows = 100000
+    if len(data) > max_model_rows:
+        rng_sample = np.random.default_rng(42)
+        selected_indices = []
+        for class_value in (0, 1):
+            class_indices = np.where(y == class_value)[0]
+            quota = max(1, int(max_model_rows * len(class_indices) / len(y)))
+            chosen = rng_sample.choice(class_indices, size=min(quota, len(class_indices)), replace=False)
+            selected_indices.extend(chosen.tolist())
+        selected_indices = np.asarray(sorted(selected_indices[:max_model_rows]), dtype=int)
+        data = data.iloc[selected_indices].copy()
+        y = y[selected_indices]
 
     if len(data) < 40 or len(np.unique(y)) != 2:
         return None, "At least 40 records with both recognizable churn and non-churn outcomes are required."
@@ -1909,12 +1993,13 @@ def _train_churn_classification(frame, roles):
         "f1": f1, "auc": auc, "tp": tp, "tn": tn, "fp": fp, "fn": fn,
         "features": feature_names, "records": len(data),
         "test_records": len(test_indices),
+        "sampled_for_memory": len(frame) > max_model_rows,
         "baseline_rate": float(y_test.mean()),
     }
     return result, "A deterministic logistic-regression model was evaluated on a stratified 20% holdout set. Metrics are estimates, not guarantees of future performance."
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _evaluate_time_series_forecast(series):
     """Backtest an additive trend model on the last 20% of daily observations."""
     values = pd.to_numeric(series, errors="coerce").dropna().astype(float)
@@ -1948,7 +2033,7 @@ def _evaluate_time_series_forecast(series):
         return None, f"Backtest could not be completed: {exc}"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _forecast_from_daily_series(series, horizon=30):
     """Fit the existing additive Exponential Smoothing approach and forecast future periods."""
     values = pd.to_numeric(series, errors="coerce").dropna().astype(float)
@@ -1962,7 +2047,7 @@ def _forecast_from_daily_series(series, horizon=30):
     return fitted.forecast(horizon)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _build_executive_insight_summary(frame, roles, insights, recommendations):
     """Create a concise, evidence-linked executive summary using transparent rules."""
     summary_parts = []
@@ -2099,7 +2184,7 @@ def _build_business_action_plan(recommendations, roles):
     return pd.DataFrame(plans)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _calculate_revenue_scenario(base_revenue, sales_change_pct, scenario_label):
     """Calculate a transparent what-if sales scenario from a user-selected percentage."""
     base = float(base_revenue)
@@ -2172,7 +2257,7 @@ def _truthy_mask(series):
     return text.isin({"1", "yes", "y", "true", "left", "exited", "churned", "late", "delayed"})
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _domain_summary(frame):
     cols = {_clean_name(c): c for c in frame.columns}
     has = lambda *names: any(_clean_name(n) in cols for n in names)
@@ -2194,7 +2279,7 @@ def _domain_summary(frame):
     return "General Dataset Analytics"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1, ttl=900)
 def _detect_dataset_features(frame):
     """Identify which business analyses are supported by the columns actually uploaded."""
     aliases = {
@@ -2922,7 +3007,7 @@ def _render_adaptive_workspace(tables):
                         "Predicted": backtest["predicted"].values,
                     })
                     st.plotly_chart(
-                        px.line(comparison, x="Date", y=["Actual", "Predicted"],
+                        px.line(comparison, x="Date", y=["Actual", "Predicted"], markers=True,
                                 title="Forecast backtest: actual vs predicted", template="plotly_white"),
                         use_container_width=True, key=f"adaptive_forecast_backtest_{_clean_name(base_name)}"
                     )
@@ -3767,6 +3852,7 @@ page_options = [
         "Sales Forecast",
         "AI Business Advisor"
     ]
+_retailiq_previous_page = st.session_state.get("retailiq_last_rendered_page")
 page = st.sidebar.radio(
     "Navigation",
     page_options,
@@ -3775,6 +3861,47 @@ page = st.sidebar.radio(
     key="retailiq_navigation"
 )
 st.session_state["retailiq_selected_page"] = page
+
+# Reset scroll on page changes, not on every Streamlit rerun.
+_retailiq_page_changed = (
+    _retailiq_previous_page is not None
+    and _retailiq_previous_page != page
+)
+st.session_state["retailiq_last_rendered_page"] = page
+if _retailiq_page_changed:
+    st.components.v1.html(
+        """
+        <script>
+        (() => {
+          try {
+            const parentWindow = window.parent;
+            const parentDocument = parentWindow.document;
+            const scrollTargets = [
+              parentDocument.querySelector('[data-testid="stAppViewContainer"]'),
+              parentDocument.querySelector('[data-testid="stMain"]'),
+              parentDocument.querySelector('section.main'),
+              parentDocument.documentElement,
+              parentDocument.body
+            ];
+            scrollTargets.forEach((target) => {
+              if (target && typeof target.scrollTo === 'function') {
+                target.scrollTo({top: 0, left: 0, behavior: 'instant'});
+              } else if (target) {
+                target.scrollTop = 0;
+              }
+            });
+            parentWindow.scrollTo({top: 0, left: 0, behavior: 'instant'});
+            const scrollingElement = parentDocument.scrollingElement;
+            if (scrollingElement) scrollingElement.scrollTop = 0;
+          } catch (error) {
+            /* Keep navigation usable if a browser blocks parent-frame access. */
+          }
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False
+    )
 
 page_descriptions = {
     "Home": "Your retail intelligence workspace at a glance.",
@@ -3900,8 +4027,8 @@ if page == "Business Overview":
     # CHART THEME
     # ==========================================
 
-    navy = "#14213D"
-    teal = "#14B8A6"
+    navy = "#211333"
+    teal = _RETAILIQ_PURPLE
     light_blue = "#DCE6F1"
 
     chart_colors = [
@@ -4020,6 +4147,7 @@ if page == "Business Overview":
         daily_chart,
         x="Date",
         y="Revenue",
+        markers=True,
         template="plotly_white"
     )
 
@@ -4130,7 +4258,7 @@ if page == "Business Overview":
             x="Order Range",
             y="Number of Orders",
             title="Order Value Distribution",
-            color_discrete_sequence=["#14B8A6"],
+            color_discrete_sequence=[_RETAILIQ_PURPLE_DARK],
             template="plotly_white"
         )
 
@@ -4228,9 +4356,9 @@ if page == "Business Overview":
                 color="Revenue",
                 hover_name="Country",
                 color_continuous_scale=[
-                    "#DCE6F1",
-                    "#14B8A6",
-                    "#14213D"
+                    "#321B55",
+                    "#6F35C8",
+                    "#C49BFF"
                 ],
                 template="plotly_white"
             )
@@ -4306,8 +4434,8 @@ if page == "Business Overview":
 elif page == "Sales Analytics":
 
     st.header("Sales Analytics")
-    navy = "#14213D"
-    teal = "#14B8A6"
+    navy = "#211333"
+    teal = _RETAILIQ_PURPLE
 
     # ==========================================
     # MONTHLY REVENUE
@@ -4320,7 +4448,7 @@ elif page == "Sales Analytics":
         x="Month",
         y="Revenue",
         title="Monthly Revenue",
-        color_discrete_sequence=[teal],
+        color_discrete_sequence=[_RETAILIQ_PURPLE],
         template="plotly_white"
     )
 
@@ -4404,17 +4532,22 @@ elif page == "Sales Analytics":
                     filtered_df["InvoiceDate"].dt.date
                 )["Revenue"]
                 .sum()
-                .reset_index()
             )
-
-            filtered_daily.columns = ["Date", "Revenue"]
+            # Reindex to every calendar day in the selected range. Missing
+            # transaction dates are genuine zero-sales days for this metric.
+            selected_calendar = pd.date_range(start_date, end_date, freq="D").date
+            filtered_daily = (
+                filtered_daily.reindex(selected_calendar, fill_value=0)
+                .rename_axis("Date")
+                .reset_index(name="Revenue")
+            )
 
             fig3 = px.area(
                 filtered_daily,
                 x="Date",
                 y="Revenue",
                 title="Daily Revenue Trend",
-                color_discrete_sequence=[teal],
+                color_discrete_sequence=[_RETAILIQ_PURPLE],
                 template="plotly_white"
             )
 
@@ -4465,7 +4598,7 @@ elif page == "Sales Analytics":
         x="Weekday",
         y="Revenue",
         title="Which Days Generate the Most Revenue?",
-        color_discrete_sequence=[teal],
+        color_discrete_sequence=[_RETAILIQ_PURPLE],
         template="plotly_white"
     )
 
@@ -4514,8 +4647,8 @@ elif page == "Product Intelligence":
 
     st.header("Product Intelligence")
 
-    navy = "#14213D"
-    teal = "#14B8A6"
+    navy = "#211333"
+    teal = _RETAILIQ_PURPLE
 
     # ==========================================
     # TOP PRODUCTS BY REVENUE
@@ -4549,7 +4682,7 @@ elif page == "Product Intelligence":
         y=chart_product_col,
         orientation="h",
         color="Revenue",
-        color_continuous_scale=["#14B8A6", "#14213D"],
+        color_continuous_scale=["#321B55", "#6F35C8", "#C49BFF"],
         template="plotly_white"
     )
 
@@ -4646,7 +4779,7 @@ elif page == "Product Intelligence":
         x="Units",
         y=chart_product_col,
         orientation="h",
-        color_discrete_sequence=[teal],
+        color_discrete_sequence=[_RETAILIQ_PURPLE],
         template="plotly_white"
     )
 
@@ -4808,10 +4941,51 @@ elif page == "Sales Forecast":
                     "Actual Revenue": backtest["actual"].values,
                     "Predicted Revenue": backtest["predicted"].values,
                 })
+                comparison_figure = go.Figure()
+                comparison_figure.add_trace(go.Scatter(
+                    x=comparison["Date"],
+                    y=comparison["Actual Revenue"],
+                    mode="lines+markers",
+                    name="Actual Revenue",
+                    connectgaps=False,
+                    line=dict(color=_RETAILIQ_PURPLE, width=3),
+                    marker=dict(
+                        color=_RETAILIQ_PURPLE_LIGHT,
+                        size=6,
+                        line=dict(color="#F5EDFF", width=1)
+                    ),
+                    hovertemplate="Date: %{x|%d %b %Y}<br>Actual revenue: "
+                                  + currency_symbol + "%{y:,.2f}<extra></extra>"
+                ))
+                comparison_figure.add_trace(go.Scatter(
+                    x=comparison["Date"],
+                    y=comparison["Predicted Revenue"],
+                    mode="lines+markers",
+                    name="Predicted Revenue",
+                    connectgaps=False,
+                    line=dict(color=_RETAILIQ_POSITIVE, width=3),
+                    marker=dict(
+                        color=_RETAILIQ_POSITIVE,
+                        size=5,
+                        line=dict(color="#D8FFF1", width=0.8)
+                    ),
+                    hovertemplate="Date: %{x|%d %b %Y}<br>Predicted revenue: "
+                                  + currency_symbol + "%{y:,.2f}<extra></extra>"
+                ))
+                comparison_figure.update_layout(
+                    title="Forecast backtest: actual vs predicted",
+                    xaxis_title="Date",
+                    yaxis_title=f"Revenue ({selected_currency})",
+                    yaxis_tickprefix=currency_symbol
+                )
                 st.plotly_chart(
-                    px.line(comparison, x="Date", y=["Actual Revenue", "Predicted Revenue"],
-                            title="Forecast backtest: actual vs predicted", template="plotly_white"),
+                    comparison_figure,
                     use_container_width=True
+                )
+                st.caption(
+                    "Actual revenue is shown for every date in the holdout window. "
+                    "A point at zero means no revenue was recorded for that date; "
+                    "markers make these zero-value observations visible."
                 )
 
             forecast = fitted.forecast(30)
