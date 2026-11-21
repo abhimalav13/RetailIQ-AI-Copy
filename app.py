@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 # ==========================================
@@ -14,6 +15,151 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
+
+
+# ==========================================
+# RETAILIQ AI — FUTURISTIC ANALYTICS CHART ENGINE
+# ==========================================
+_RETAILIQ_PLOTLY_PALETTE = [
+    "#12D6A7",  # emerald green
+    "#12CBEA",  # electric cyan
+    "#368BFF",  # electric blue
+    "#8B5CF6",  # violet
+    "#D05CFF",  # magenta
+    "#F5B942",  # amber
+]
+_RETAILIQ_POSITIVE = "#12D6A7"
+_RETAILIQ_NEGATIVE = "#FF4D6D"
+_RETAILIQ_NEUTRAL = "#36B9F6"
+_retailiq_original_plotly_chart = st.plotly_chart
+
+
+def _retailiq_style_figure(fig):
+    """Apply a consistent dark analytical theme to Plotly figures."""
+    if not hasattr(fig, "update_layout") or not hasattr(fig, "data"):
+        return fig
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(8, 10, 20, 0)",
+        plot_bgcolor="rgba(10, 14, 28, 0.78)",
+        font=dict(family="DM Sans, Segoe UI, sans-serif", color="#E9E7F2", size=12),
+        title=dict(font=dict(color="#F7F4FF", size=17), x=0.02, xanchor="left"),
+        legend=dict(
+            bgcolor="rgba(14, 18, 34, 0.72)",
+            bordercolor="rgba(139, 92, 246, 0.18)",
+            borderwidth=1,
+            font=dict(color="#D9D5E7", size=11)
+        ),
+        margin=dict(l=28, r=22, t=58, b=38),
+        hoverlabel=dict(
+            bgcolor="#17152A",
+            bordercolor="#8B5CF6",
+            font=dict(color="#FFFFFF", family="DM Sans, sans-serif", size=12)
+        ),
+        transition=dict(duration=850, easing="cubic-in-out"),
+        uirevision="retailiq-chart"
+    )
+
+    fig.update_xaxes(
+        showgrid=True, gridcolor="rgba(112, 130, 170, 0.13)",
+        zerolinecolor="rgba(112, 130, 170, 0.2)",
+        linecolor="rgba(135, 150, 190, 0.22)",
+        tickfont=dict(color="#AAAFC4"),
+        title_font=dict(color="#C8C4D8")
+    )
+    fig.update_yaxes(
+        showgrid=True, gridcolor="rgba(112, 130, 170, 0.13)",
+        zerolinecolor="rgba(112, 130, 170, 0.2)",
+        linecolor="rgba(135, 150, 190, 0.22)",
+        tickfont=dict(color="#AAAFC4"),
+        title_font=dict(color="#C8C4D8")
+    )
+
+    for trace_index, trace in enumerate(fig.data):
+        trace_type = getattr(trace, "type", "")
+        trace_name = str(getattr(trace, "name", "") or "").lower()
+
+        if trace_type == "scatter":
+            if any(word in trace_name for word in ("actual", "revenue", "sales")):
+                line_color = _RETAILIQ_NEUTRAL
+            elif any(word in trace_name for word in ("forecast", "predicted", "target")):
+                line_color = _RETAILIQ_NEGATIVE if "predicted" in trace_name else "#A970FF"
+            else:
+                line_color = _RETAILIQ_PLOTLY_PALETTE[trace_index % len(_RETAILIQ_PLOTLY_PALETTE)]
+            trace.update(
+                line=dict(color=line_color, width=2.8, shape="spline"),
+                marker=dict(
+                    color=line_color, size=6,
+                    line=dict(color="#F7F4FF", width=0.7)
+                ),
+                hovertemplate=None
+            )
+        elif trace_type == "bar":
+            y_values = getattr(trace, "y", None)
+            try:
+                values = [float(v) for v in list(y_values)] if y_values is not None else []
+                if values and any(v < 0 for v in values) and any(v >= 0 for v in values):
+                    bar_colors = [_RETAILIQ_NEGATIVE if v < 0 else _RETAILIQ_POSITIVE for v in values]
+                else:
+                    bar_colors = [
+                        _RETAILIQ_PLOTLY_PALETTE[i % len(_RETAILIQ_PLOTLY_PALETTE)]
+                        for i in range(len(values))
+                    ] if values else _RETAILIQ_NEUTRAL
+                trace.update(
+                    marker=dict(
+                        color=bar_colors,
+                        line=dict(color="rgba(255,255,255,0.12)", width=0.7)
+                    )
+                )
+            except (TypeError, ValueError):
+                trace.update(marker=dict(color=_RETAILIQ_NEUTRAL))
+        elif trace_type == "pie":
+            trace.update(
+                marker=dict(
+                    colors=["#12D6A7", "#FF4D6D", "#12CBEA", "#8B5CF6",
+                            "#F5B942", "#368BFF", "#D05CFF"],
+                    line=dict(color="#0B0D18", width=2)
+                ),
+                textfont=dict(color="#F7F4FF")
+            )
+        elif trace_type == "histogram":
+            trace.update(
+                marker=dict(
+                    color="#368BFF",
+                    line=dict(color="#12CBEA", width=0.5)
+                ),
+                opacity=0.88
+            )
+        elif trace_type in ("heatmap", "contour"):
+            trace.update(
+                colorscale=[
+                    [0.0, "#FF4D6D"],
+                    [0.25, "#8B5CF6"],
+                    [0.5, "#17213A"],
+                    [0.75, "#168FC4"],
+                    [1.0, "#12D6A7"]
+                ],
+                colorbar=dict(tickfont=dict(color="#D8D5E4"))
+            )
+        elif trace_type == "choropleth":
+            trace.update(
+                colorscale=[[0, "#17213A"], [0.45, "#368BFF"], [1, "#12D6A7"]],
+                marker_line_color="#111827",
+                marker_line_width=0.35
+            )
+
+    return fig
+
+
+def _retailiq_plotly_chart(figure_or_data, *args, **kwargs):
+    """Style all charts centrally without changing their source data."""
+    styled = _retailiq_style_figure(figure_or_data)
+    return _retailiq_original_plotly_chart(styled, *args, **kwargs)
+
+
+st.plotly_chart = _retailiq_plotly_chart
+
 
 # ==========================================
 # RETAILIQ AI - CUSTOM UI THEME
@@ -650,6 +796,53 @@ st.markdown("""
     background: #211a35 !important;
     border: 1px solid rgba(177,119,255,.3) !important;
     border-radius: 10px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+/* Futuristic chart panels and soft entrance motion */
+[data-testid="stPlotlyChart"] {
+    background: linear-gradient(145deg, rgba(15,20,38,.96), rgba(9,13,26,.98)) !important;
+    border: 1px solid rgba(67, 125, 210, .28) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 28px rgba(0,0,0,.24), inset 0 1px rgba(255,255,255,.025) !important;
+    overflow: hidden;
+    animation: ri-chart-enter .75s cubic-bezier(.2,.7,.2,1) both;
+    transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+[data-testid="stPlotlyChart"]:hover {
+    border-color: rgba(18, 203, 234, .48) !important;
+    box-shadow: 0 0 22px rgba(18, 139, 255, .13), 0 10px 30px rgba(0,0,0,.28) !important;
+    transform: translateY(-2px);
+}
+@keyframes ri-chart-enter {
+    from { opacity: 0; transform: translateY(14px) scale(.992); filter: brightness(.72); }
+    to { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+[data-testid="stPlotlyChart"] .js-plotly-plot {
+    border-radius: 14px;
+}
+/* Progressive SVG line reveal for Plotly time-series and trend charts */
+[data-testid="stPlotlyChart"] .scatterlayer .js-line {
+    stroke-dasharray: 1600;
+    stroke-dashoffset: 1600;
+    animation: ri-line-reveal 2.1s cubic-bezier(.35,.05,.25,1) forwards;
+}
+[data-testid="stPlotlyChart"] .scatterlayer .point {
+    opacity: 0;
+    animation: ri-point-reveal .45s ease-out .9s forwards;
+}
+@keyframes ri-line-reveal {
+    to { stroke-dashoffset: 0; }
+}
+@keyframes ri-point-reveal {
+    to { opacity: 1; }
+}
+@media(prefers-reduced-motion: reduce) {
+    [data-testid="stPlotlyChart"] { animation: none !important; transition: none !important; }
 }
 </style>
 """, unsafe_allow_html=True)
