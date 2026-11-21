@@ -1,102 +1,94 @@
-# 📊 RetailIQ AI – Smart Retail Analytics & Business Decision Support
+# 🚀 RetailIQ AI – AI-Powered Business Analytics Platform
 
-**An interactive retail analytics platform built with Python, Streamlit and Plotly to transform retail transaction data into meaningful business insights.**
+**Turn raw business data into meaningful insights and smarter decisions.**
 
-<p align="center">
-  <a href="https://retailiq-ai-copy-awbzkey6ztlhhq4gjxgzmy.streamlit.app/">
-    <strong>🚀 Live Dashboard</strong>
-  </a>
-  &nbsp; | &nbsp;
-  <a href="https://github.com/abhimalav13/RetailIQ-AI-Copy/releases/tag/v1.0">
-    <strong>🎥 Watch Project Demo</strong>
-  </a>
-</p>
+RetailIQ AI is an interactive, AI-powered business analytics platform built with Python and Streamlit. It helps transform raw datasets into meaningful visualizations, performance metrics, business insights and sales forecasts.
 
----
-
-## 📌 Project Overview
-
-RetailIQ AI is an interactive retail analytics and decision-support application designed to help businesses understand sales performance, identify product trends, analyse geographical markets and forecast future revenue.
-
-The platform converts retail transaction data into interactive visualisations, business KPIs and actionable insights through an easy-to-use dashboard.
-
-## ✨ Key Features
-
-### 1. Business Overview
-- Key business performance indicators.
-- Monthly revenue trends.
-- Product performance overview.
-- Interactive business visualisations.
-
-### 2. Sales Analytics
-- Monthly revenue analysis.
-- Order performance tracking.
-- Sales trend visualisations.
-
-### 3. Product Intelligence
-- Top-performing products by revenue.
-- Product quantity analysis.
-- Product performance comparisons.
-
-### 4. Market Analysis
-- Country-wise revenue analysis.
-- Geographical market comparisons.
-- Identification of important sales markets.
-
-### 5. Sales Forecast
-- Revenue forecasting using Holt-Winters Exponential Smoothing.
-- Historical sales trend analysis.
-- Future revenue projections.
-
-### 6. AI Business Advisor
-- Automated business insights.
-- Rule-based recommendations.
-- Decision-support suggestions based on retail performance.
-
-## 🛠️ Technology Stack
-
-| Technology | Application |
-|---|---|
-| Python | Core programming |
-| Pandas | Data cleaning and manipulation |
-| NumPy | Numerical operations |
-| Plotly | Interactive visualisations |
-| Streamlit | Dashboard development |
-| Statsmodels | Revenue forecasting |
-| GitHub | Version control and project hosting |
-| Streamlit Community Cloud | Application deployment |
-
-## 📂 Dataset Information
-
-The project uses the **Online Retail dataset**, containing historical retail transaction records.
-
-Key dataset fields include:
-
-- InvoiceNo
-- StockCode
-- Description
-- Quantity
-- InvoiceDate
-- UnitPrice
-- Country
-
-The application processes transaction data to calculate revenue, orders, units sold, product performance and country-level business metrics.
-
-**Note:** The original dataset contains historical UK retail transactions from 2010–2011. Forecasts are based on historical patterns and should not be interpreted as guaranteed future results.
-
-## 🎥 Project Demonstration
-
-Explore the complete walkthrough of RetailIQ AI, covering all six dashboard sections, interactive visualisations, retail analytics and revenue forecasting.
-
-**[▶ Watch RetailIQ AI – Dashboard Demo (v1.0)](https://github.com/abhimalav13/RetailIQ-AI-Copy/releases/tag/v1.0)**
+The platform is designed with flexible dataset handling, allowing users to upload different types of business data and explore insights through interactive dashboards.
 
 ## 🌐 Live Application
 
-**[Open RetailIQ AI Dashboard](https://retailiq-ai-copy-awbzkey6ztlhhq4gjxgzmy.streamlit.app/)**
+**Try RetailIQ AI:**  
+https://retailiq-ai-copy-awbzkey6ztlhhq4gjxgzmy.streamlit.app/
 
-## ⚙️ Installation and Setup
+## ✨ What's New?
 
-To run this project locally:
+The latest update focuses on making RetailIQ AI more flexible, interactive and user-friendly.
+
+- **Multi-File Upload Support:** Upload multiple related CSV or Excel files together for analysis.
+- **Flexible Dataset Compatibility:** Improved column detection and mapping to handle different dataset structures.
+- **Interactive Dashboards:** Explore business performance through dynamic charts and visualizations.
+- **Improved User Experience:** Cleaner interface and a simplified data-upload workflow.
+- **Broader Business Applications:** Designed to explore datasets from different domains, beyond retail and e-commerce.
+
+## 📊 Key Features
+
+RetailIQ AI currently includes six analytical modules:
+
+### 1. Business Overview
+- Monitor important business KPIs.
+- Understand overall business performance.
+- Identify key revenue and performance trends.
+
+### 2. Sales Analytics
+- Analyze sales and revenue trends.
+- Explore monthly and daily performance.
+- Identify changes in business performance.
+
+### 3. Product Intelligence
+- Identify top-performing products.
+- Analyze product-level revenue.
+- Understand product performance patterns.
+
+### 4. Market Analysis
+- Explore geographical and market performance.
+- Identify leading markets.
+- Compare business performance across regions.
+
+### 5. Sales Forecasting
+- Analyze historical sales patterns.
+- Forecast potential future sales.
+- Support data-driven planning.
+
+### 6. AI Business Advisor
+- Generate business-oriented insights.
+- Identify important performance patterns.
+- Support better business decision-making.
+
+## 🌍 Dataset Compatibility & Business Applications
+
+RetailIQ AI is being developed with flexible data handling to reduce dependency on a single dataset structure.
+
+Potential applications include:
+
+| Business Domain | Possible Analysis |
+|---|---|
+| Retail & E-commerce | Sales, revenue and product performance |
+| HR & People Analytics | Employee trends, attrition and workforce metrics |
+| Supply Chain | Inventory, orders and delivery performance |
+| General Business Data | KPIs, trends and performance analysis |
+
+*Note: The six existing modules are primarily focused on retail analytics. Support for other business domains depends on dataset structure and the analytical features available.*
+
+## 🛠️ Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Core programming |
+| Streamlit | Interactive web application |
+| Pandas | Data processing and manipulation |
+| Plotly | Interactive visualizations |
+| Statsmodels | Statistical analysis and forecasting |
+| GitHub | Version control and project management |
+| Google Colab | Development environment |
+
+## 📂 Supported File Formats
+
+- CSV (.csv)
+- Excel (.xlsx)
+- Multiple related files in a single upload session.
+
+## ⚙️ Run Locally
 
 **1. Clone the repository**
 
@@ -104,7 +96,7 @@ To run this project locally:
 git clone https://github.com/abhimalav13/RetailIQ-AI-Copy.git
 ```
 
-**2. Navigate to the project folder**
+**2. Navigate to the project directory**
 
 ```bash
 cd RetailIQ-AI-Copy
@@ -116,37 +108,42 @@ cd RetailIQ-AI-Copy
 pip install -r requirements.txt
 ```
 
-**4. Run the Streamlit application**
+**4. Run the application**
 
 ```bash
 streamlit run app.py
 ```
 
-## 📁 Project Structure
-
-```text
-RetailIQ-AI-Copy/
-│
-├── app.py
-├── requirements.txt
-├── README.md
-└── ff744770-ea67-497d-916e-55c45b633585.png
-```
+Open the local URL provided by Streamlit in your browser.
 
 ## 🎯 Project Objective
 
-The objective of RetailIQ AI is to demonstrate how data analytics, interactive dashboards and forecasting techniques can support retail business decisions.
+The main objective of RetailIQ AI is to make business analytics more accessible by reducing manual data preparation and presenting useful insights through interactive dashboards.
 
-This project combines data preparation, exploratory analysis, visualisation and forecasting in a single application.
+The project explores how data analytics, automation and AI-driven insights can help businesses understand their data and make informed decisions.
 
-## 👨‍💻 Developed By
+## 🚀 Future Improvements
 
-**Abhishek Malav**
+- Expand analytical capabilities for HR and People Analytics.
+- Introduce Supply Chain Analytics.
+- Improve automatic dataset understanding.
+- Add more advanced forecasting and predictive models.
+- Enhance AI-powered business recommendations.
 
+## 👨‍💻 Developer
+
+**Abhishek Malav**  
 MBA – Business Analytics
 
-**Project:** RetailIQ AI – Smart Retail Analytics & Business Decision Support Platform
+Interested in Business Analytics, Data Science, Python and building practical data-driven business solutions.
+
+## 🔗 Project Links
+
+- **Live Dashboard:** https://retailiq-ai-copy-awbzkey6ztlhhq4gjxgzmy.streamlit.app/
+- **GitHub Repository:** https://github.com/abhimalav13/RetailIQ-AI-Copy
 
 ---
 
-⭐ If you find this project interesting, feel free to explore the repository and live dashboard.
+⭐ If you find this project interesting, consider starring the repository!
+
+**Built with curiosity, continuous learning and a passion for data-driven decision-making.**
